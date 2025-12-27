@@ -9,8 +9,7 @@ import {
   onSnapshot, 
   query, 
   orderBy,
-  deleteDoc,
-  writeBatch
+  deleteDoc
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 import { Order, Table, TableStatus } from '../types';
 
@@ -93,9 +92,8 @@ export const dbService = {
   },
 
   async deleteOrder(orderId: string, tableId: number): Promise<void> {
-    // 1. Limpeza Local Imediata
+    // 1. Atualização Local Imediata
     const allOrders = localDb.getOrders();
-    const orderToArchive = allOrders.find((o: any) => o.id === orderId);
     localDb.saveOrders(allOrders.filter((o: any) => o.id !== orderId));
     
     const tables = localDb.getTables();
@@ -105,29 +103,32 @@ export const dbService = {
       localDb.saveTables(tables);
     }
 
-    // 2. Firebase: Mover para deleted_orders e liberar mesa
+    // 2. Firebase - Exclusão Definitiva
     if (useFirebase && db) {
       try {
-        const batch = writeBatch(db);
-        
-        // Salva na coleção de excluídos para auditoria
-        if (orderToArchive) {
-          const archiveRef = doc(db, "deleted_orders", orderId);
-          batch.set(archiveRef, { ...orderToArchive, deletedAt: Date.now() });
-        }
-
-        // Deleta da lista ativa
-        batch.delete(doc(db, "orders", orderId));
-
-        // Força a mesa a ficar livre
-        batch.set(doc(db, "tables", tableId.toString()), { id: tableId, status: 'AVAILABLE' }, { merge: true });
-
-        await batch.commit();
+        // Deleta o pedido da coleção principal
+        await deleteDoc(doc(db, "orders", orderId));
+        // Atualiza a mesa para disponível no banco
+        await setDoc(doc(db, "tables", tableId.toString()), { id: tableId, status: 'AVAILABLE' }, { merge: true });
       } catch (e) {
-        console.error("Erro ao deletar no Firebase:", e);
-        // Fallback individual se o batch falhar
-        await deleteDoc(doc(db, "orders", orderId)).catch(() => {});
-        await setDoc(doc(db, "tables", tableId.toString()), { id: tableId, status: 'AVAILABLE' }, { merge: true }).catch(() => {});
+        console.error("Erro ao cancelar pedido no Firebase:", e);
+        throw e; // Lança para o App.tsx tratar
+      }
+    }
+  },
+
+  async deleteHistoryOrder(orderId: string): Promise<void> {
+    // 1. Local
+    const allOrders = localDb.getOrders();
+    localDb.saveOrders(allOrders.filter((o: any) => o.id !== orderId));
+
+    // 2. Firebase
+    if (useFirebase && db) {
+      try {
+        await deleteDoc(doc(db, "orders", orderId));
+      } catch (e) {
+        console.error("Erro ao deletar do histórico no Firebase:", e);
+        throw e;
       }
     }
   },

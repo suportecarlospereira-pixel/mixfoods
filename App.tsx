@@ -89,7 +89,11 @@ const useStore = () => {
     await dbService.deleteOrder(orderId, tableId);
   };
 
-  return { tables, orders, addOrUpdateOrder, closeOrder, cancelOrderAction, loading };
+  const deleteHistoryOrder = async (orderId: string) => {
+    await dbService.deleteHistoryOrder(orderId);
+  };
+
+  return { tables, orders, addOrUpdateOrder, closeOrder, cancelOrderAction, deleteHistoryOrder, loading };
 };
 
 const Sidebar = () => (
@@ -306,11 +310,16 @@ const OrderEditor = ({ store }: { store: any }) => {
 
   const handleCancelOrder = async () => {
     if (!activeOrder) { navigate('/'); return; }
-    if (window.confirm(`DESEJA EXCLUIR? A Mesa ${tableId} será liberada.`)) {
+    if (window.confirm(`CONFIRMAR EXCLUSÃO: O pedido da Mesa ${tableId} será apagado e a mesa liberada.`)) {
       setIsSubmitting(true);
-      await store.cancelOrderAction(activeOrder.id, tableId);
-      navigate('/');
-      setIsSubmitting(false);
+      try {
+        await store.cancelOrderAction(activeOrder.id, tableId);
+        navigate('/');
+      } catch (err) {
+        alert("Erro ao excluir pedido. Verifique sua conexão e as regras do Firebase.");
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -452,6 +461,7 @@ const AdminView = ({ store }: { store: any }) => {
 const DashboardView = ({ store }: { store: any }) => {
   const [filter, setFilter] = useState<'HOJE' | 'ONTEM' | 'DATA'>('HOJE');
   const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const filteredOrders = useMemo(() => {
     const paid = store.orders.filter((o: Order) => o.status === 'PAID');
@@ -476,6 +486,20 @@ const DashboardView = ({ store }: { store: any }) => {
     return acc;
   }, {});
   const chartData = Object.entries(productStats).map(([name, value]) => ({ name, value })).sort((a:any, b:any) => b.value - a.value).slice(0, 5);
+
+  const handleDeleteHistory = async (orderId: string) => {
+    if (window.confirm("EXCLUIR PERMANENTEMENTE: Deseja remover esta venda do histórico e do banco de dados?")) {
+      setIsDeleting(orderId);
+      try {
+        await store.deleteHistoryOrder(orderId);
+      } catch (err) {
+        console.error(err);
+        alert("FALHA AO DELETAR: O banco de dados recusou a operação. Verifique se você permitiu o 'delete' nas regras do Firestore.");
+      } finally {
+        setIsDeleting(null);
+      }
+    }
+  };
 
   return (
     <div className="p-4 md:p-10 max-w-7xl mx-auto pb-48 animate-fadeIn">
@@ -518,14 +542,30 @@ const DashboardView = ({ store }: { store: any }) => {
           <h3 className="text-xl font-black text-slate-900 mb-8 italic uppercase">Histórico de Vendas</h3>
           <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
             {filteredOrders.map(o => (
-              <div key={o.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500">
+              <div key={o.id} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 group relative transition-all ${isDeleting === o.id ? 'opacity-30 scale-95 blur-[2px]' : ''}`}>
                 <div>
                   <p className="text-sm font-black italic uppercase">Mesa {o.tableId}</p>
                   <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleTimeString()}</p>
                 </div>
-                <p className="text-lg font-black italic">R$ {o.total.toFixed(2)}</p>
+                <div className="flex items-center gap-4">
+                  <p className="text-lg font-black italic">R$ {o.total.toFixed(2)}</p>
+                  <button 
+                    disabled={isDeleting !== null}
+                    onClick={() => handleDeleteHistory(o.id)}
+                    className="p-3 text-slate-300 hover:text-rose-600 transition-colors md:opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed bg-white/50 rounded-xl"
+                    title="Excluir Venda Permanentemente"
+                  >
+                    {isDeleting === o.id ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-trash-can"></i>}
+                  </button>
+                </div>
               </div>
             ))}
+            {filteredOrders.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                <i className="fas fa-receipt text-3xl mb-3 opacity-20"></i>
+                <p className="text-[10px] font-black uppercase tracking-widest">Nenhuma venda encontrada</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
