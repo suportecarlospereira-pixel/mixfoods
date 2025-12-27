@@ -13,7 +13,7 @@ const ThermalReceipt: React.FC<ThermalReceiptProps> = ({ order }) => {
     <div id="thermal-receipt" className="p-2 bg-white text-black font-mono text-[12px] leading-tight" style={{ width: '80mm', margin: '0 auto' }}>
       <div className="text-center mb-1">
         <h2 className="text-[18px] font-bold">*** MIX FOODS ***</h2>
-        <p className="text-[10px] uppercase font-bold">Gestao de Pedidos</p>
+        <p className="text-[10px] uppercase font-bold">Gestão de Pedidos</p>
         <p>------------------------------------------</p>
         <h3 className="font-bold text-[16px]">MESA: {order.tableId}</h3>
         <p className="text-[10px]">{new Date(order.createdAt).toLocaleString('pt-BR')}</p>
@@ -39,7 +39,7 @@ const ThermalReceipt: React.FC<ThermalReceiptProps> = ({ order }) => {
               {item.notes && (
                 <tr>
                   <td colSpan={3} className="text-[11px] pb-2 pl-2 italic font-bold">
-                    >> OBS: {item.notes.toUpperCase()}
+                    {" >> OBS: "}{item.notes.toUpperCase()}
                   </td>
                 </tr>
               )}
@@ -59,7 +59,7 @@ const ThermalReceipt: React.FC<ThermalReceiptProps> = ({ order }) => {
         <p>------------------------------------------</p>
         <p>AGRADECEMOS A PREFERENCIA!</p>
         <p>Mix Foods System - Vercel Optimized</p>
-        <div className="h-10"></div> {/* Espaço para corte manual */}
+        <div className="h-10"></div>
         <p>.</p>
       </div>
     </div>

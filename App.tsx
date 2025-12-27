@@ -93,7 +93,7 @@ const Sidebar = () => (
   <nav className="fixed bottom-0 left-0 right-0 md:relative md:w-64 bg-slate-950 text-white p-2 md:p-5 flex md:flex-col justify-around md:justify-start gap-1 z-[60] border-t md:border-t-0 md:border-r border-white/5">
     <div className="hidden md:flex flex-col items-center mb-8 px-2 text-center mt-4">
       <MixFoodsLogo size="w-20 h-20" />
-      <h1 className="text-xl font-black tracking-tighter text-white mt-3 italic">MIX FOODS</h1>
+      <h1 className="text-xl font-black tracking-tighter text-white mt-3 italic uppercase">MIX FOODS</h1>
     </div>
     <div className="flex md:flex-col flex-1 justify-around md:justify-start md:gap-2">
       <Link to="/" className="flex flex-col md:flex-row items-center gap-2 p-3 md:p-4 rounded-xl hover:bg-white/5 group">
@@ -260,17 +260,17 @@ const OrderEditor = ({ store }: { store: any }) => {
           <div key={product.id} className="bg-white rounded-2xl p-2 shadow-sm flex flex-col border border-white">
             <div className="relative mb-2 aspect-square rounded-xl overflow-hidden bg-slate-100">
               <img src={product.image} className="w-full h-full object-cover" />
-              <div className="absolute top-1 right-1 bg-white/90 px-2 py-0.5 rounded-lg">
+              <div className="absolute top-1 right-1 bg-white/90 px-2 py-0.5 rounded-lg shadow-sm">
                 <span className="text-rose-600 font-black text-[9px]">R$ {product.price.toFixed(2)}</span>
               </div>
             </div>
-            <h3 className="font-bold text-slate-800 text-[9px] mb-2 px-1 flex-1 uppercase line-clamp-2">{product.name}</h3>
+            <h3 className="font-bold text-slate-800 text-[9px] mb-2 px-1 flex-1 uppercase line-clamp-2 leading-tight">{product.name}</h3>
             <button 
               disabled={product.price === 0 || isSubmitting}
               onClick={() => addToCart(product)}
-              className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-[9px] font-black uppercase active:bg-rose-600"
+              className="w-full bg-slate-950 text-white py-2.5 rounded-xl text-[9px] font-black uppercase active:bg-rose-600 transition-colors"
             >
-              Adicionar
+              Lançar
             </button>
           </div>
         ))}
@@ -279,12 +279,12 @@ const OrderEditor = ({ store }: { store: any }) => {
       <div className="fixed bottom-20 left-4 right-4 z-40">
         <button
           onClick={() => setShowSummary(true)}
-          className="w-full bg-slate-950 text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center justify-between border border-white/10 active:scale-95"
+          className="w-full bg-slate-950 text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center justify-between border border-white/10 active:scale-95 transition-all"
         >
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center font-black text-sm">{cartCount}</div>
             <div className="text-left">
-              <p className="text-[9px] text-slate-500 font-bold uppercase leading-none mb-1">Total Pedido</p>
+              <p className="text-[9px] text-slate-500 font-bold uppercase leading-none mb-1">Total Lançado</p>
               <p className="text-lg font-black italic leading-none">R$ {cartTotal.toFixed(2)}</p>
             </div>
           </div>
@@ -298,36 +298,45 @@ const OrderEditor = ({ store }: { store: any }) => {
           <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[2.5rem] shadow-2xl flex flex-col max-h-[85vh]">
             <div className="w-10 h-1.5 bg-slate-200 rounded-full mx-auto my-3"></div>
             <div className="px-6 py-2 flex justify-between items-center border-b border-slate-50">
-              <h3 className="text-lg font-black italic uppercase">Itens da Mesa {tableId}</h3>
+              <h3 className="text-lg font-black italic uppercase">Resumo Mesa {tableId}</h3>
               <button onClick={() => setShowSummary(false)} className="text-slate-400 p-2"><i className="fas fa-times"></i></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {cart.map(item => (
-                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="font-bold text-[11px] uppercase text-slate-800">{item.name}</h4>
+                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-sm space-y-3">
+                  <div className="flex justify-between items-start">
+                    <h4 className="font-bold text-[11px] uppercase text-slate-800 flex-1 pr-4">{item.name}</h4>
                     <button onClick={() => removeItem(item.id)} className="text-rose-500 p-1"><i className="fas fa-trash-can text-xs"></i></button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="text"
-                      placeholder="Obs: Sem cebola, mal passado..."
-                      value={item.notes}
-                      onChange={(e) => updateItemNotes(item.id, e.target.value)}
-                      className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-bold text-slate-600 focus:border-rose-500 focus:outline-none"
-                    />
-                    <span className="text-[11px] font-black text-slate-900">R$ {item.price.toFixed(2)}</span>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Observações (Tirar ingredientes, etc)</label>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text"
+                        placeholder="Ex: Sem cebola, s/ maionese..."
+                        value={item.notes}
+                        onChange={(e) => updateItemNotes(item.id, e.target.value)}
+                        className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-bold text-slate-600 focus:border-rose-500 focus:outline-none"
+                      />
+                      <span className="text-[11px] font-black text-slate-900 whitespace-nowrap">R$ {item.price.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
               ))}
+              {cart.length === 0 && (
+                <div className="text-center py-10 opacity-30">
+                  <i className="fas fa-cart-shopping text-4xl mb-3"></i>
+                  <p className="text-[10px] font-black uppercase">Mesa Vazia</p>
+                </div>
+              )}
             </div>
             <div className="p-5 bg-slate-950 text-white space-y-3">
               <div className="flex justify-between items-center mb-1">
                 <span className="text-slate-500 font-bold uppercase text-[10px]">Total Acumulado</span>
                 <span className="text-2xl font-black italic">R$ {cartTotal.toFixed(2)}</span>
               </div>
-              <button onClick={handleSave} disabled={isSubmitting || cart.length === 0} className="w-full bg-rose-600 text-white py-4.5 rounded-2xl font-black text-xs uppercase shadow-lg active:bg-rose-700">
-                {isSubmitting ? 'Salvando...' : 'Confirmar Pedido'}
+              <button onClick={handleSave} disabled={isSubmitting || cart.length === 0} className="w-full bg-rose-600 text-white py-4.5 rounded-2xl font-black text-xs uppercase shadow-lg active:bg-rose-700 h-[56px] flex items-center justify-center">
+                {isSubmitting ? 'Salvando...' : 'Finalizar e Enviar'}
               </button>
             </div>
           </div>
@@ -351,38 +360,45 @@ const AdminView = ({ store }: { store: any }) => {
       <header className="flex justify-between items-end mb-8">
         <div>
           <h2 className="text-2xl font-black text-slate-900 italic uppercase">Cozinha</h2>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Monitor de Producao</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Painel de Produção</p>
         </div>
-        <div className="bg-rose-600 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase">{activeOrders.length} Pendentes</div>
+        <div className="bg-rose-600 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase shadow-lg shadow-rose-100">{activeOrders.length} Pendentes</div>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {activeOrders.map((order: Order) => (
-          <div key={order.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col">
+          <div key={order.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col relative overflow-hidden group">
+             <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-2xl font-black text-slate-900 italic">Mesa {order.tableId}</h3>
-              <span className="text-[10px] font-black text-slate-400">{new Date(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              <h3 className="text-3xl font-black text-slate-900 italic">Mesa {order.tableId}</h3>
+              <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1 rounded-lg">{new Date(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
             <div className="flex-1 space-y-3 mb-6">
               {order.items.map((item, idx) => (
                 <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <div className="flex gap-2 items-center">
                     <span className="min-w-[24px] h-6 bg-slate-950 text-white rounded flex items-center justify-center font-black text-[10px]">{item.quantity}</span>
-                    <span className="font-bold text-xs text-slate-800 uppercase italic">{item.name}</span>
+                    <span className="font-bold text-xs text-slate-800 uppercase italic flex-1">{item.name}</span>
                   </div>
                   {item.notes && (
-                    <div className="mt-2 bg-rose-600 text-white p-2 rounded-lg text-[10px] font-black uppercase italic">
-                      *** OBS: {item.notes} ***
+                    <div className="mt-2 bg-rose-600 text-white p-2 rounded-lg text-[10px] font-black uppercase italic animate-pulse">
+                      *** ATENÇÃO: {item.notes} ***
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => handlePrint(order)} className="bg-slate-100 py-3 rounded-xl font-black text-[9px] uppercase">Cupom</button>
-              <button onClick={() => store.closeOrder(order.id)} className="bg-emerald-500 text-white py-3 rounded-xl font-black text-[9px] uppercase shadow-lg shadow-emerald-100">Receber</button>
+            <div className="grid grid-cols-2 gap-2 mt-auto">
+              <button onClick={() => handlePrint(order)} className="bg-slate-100 py-4 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-colors">Imprimir</button>
+              <button onClick={() => store.closeOrder(order.id)} className="bg-emerald-500 text-white py-4 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-colors">Pago</button>
             </div>
           </div>
         ))}
+        {activeOrders.length === 0 && (
+          <div className="col-span-full py-24 text-center">
+             <i className="fas fa-check-circle text-emerald-100 text-6xl mb-4"></i>
+             <p className="text-xs font-black uppercase text-slate-300">Tudo pronto por aqui!</p>
+          </div>
+        )}
       </div>
       <div className="hidden">
         <ThermalReceipt order={printingOrder} />
@@ -415,36 +431,40 @@ const DashboardView = ({ store }: { store: any }) => {
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 animate-fadeIn">
       <header className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8">
         <div>
-          <h2 className="text-2xl font-black text-slate-950 italic uppercase mb-2">Relatorios</h2>
+          <h2 className="text-2xl font-black text-slate-950 italic uppercase mb-2">Financeiro</h2>
           <div className="flex gap-2 mt-4">
             {['HOJE', 'ONTEM'].map(f => (
-              <button key={f} onClick={() => setFilter(f as any)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase ${filter === f ? 'bg-rose-600 text-white' : 'bg-white text-slate-400 border border-slate-100'}`}>
+              <button key={f} onClick={() => setFilter(f as any)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${filter === f ? 'bg-rose-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}>
                 {f}
               </button>
             ))}
           </div>
         </div>
-        <div className="bg-slate-950 p-6 rounded-[2rem] text-white w-full md:w-64 shadow-xl">
-          <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Total {filter}</p>
+        <div className="bg-slate-950 p-6 rounded-[2rem] text-white w-full md:w-64 shadow-2xl border border-white/5 relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-20 h-20 bg-rose-600/10 rounded-full"></div>
+          <p className="text-slate-500 text-[10px] font-black uppercase mb-1 tracking-widest">Total Líquido</p>
           <p className="text-3xl font-black italic">R$ {total.toFixed(2)}</p>
         </div>
       </header>
 
-      <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900 mb-6 italic uppercase">Historico de Vendas</h3>
-        <div className="space-y-3 max-h-[400px] overflow-y-auto">
+      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+        <h3 className="text-sm font-black text-slate-900 mb-6 italic uppercase tracking-widest">Vendas Concluídas</h3>
+        <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
           {filteredOrders.map(o => (
-            <div key={o.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500">
+            <div key={o.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 transition-all hover:bg-slate-100">
               <div>
-                <p className="text-xs font-black uppercase">Mesa {o.tableId}</p>
+                <p className="text-xs font-black uppercase italic">Mesa {o.tableId}</p>
                 <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleTimeString()}</p>
               </div>
               <div className="flex items-center gap-4">
-                <p className="text-sm font-black">R$ {o.total.toFixed(2)}</p>
-                <button onClick={() => store.deleteHistoryOrder(o.id)} className="text-slate-300 hover:text-rose-600 p-2"><i className="fas fa-trash text-xs"></i></button>
+                <p className="text-sm font-black italic">R$ {o.total.toFixed(2)}</p>
+                <button onClick={() => store.deleteHistoryOrder(o.id)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><i className="fas fa-trash-can text-xs"></i></button>
               </div>
             </div>
           ))}
+          {filteredOrders.length === 0 && (
+            <div className="text-center py-20 text-slate-300 italic font-black text-[10px] uppercase">Sem movimentação no período</div>
+          )}
         </div>
       </div>
     </div>
@@ -459,6 +479,7 @@ const App: React.FC = () => {
       <div className="mt-8 w-40 h-1 bg-white/10 rounded-full overflow-hidden">
         <div className="h-full bg-rose-600 animate-progress"></div>
       </div>
+      <p className="text-white font-black text-[10px] uppercase tracking-[0.5em] mt-6 animate-pulse">Sincronizando Banco</p>
     </div>
   );
 
