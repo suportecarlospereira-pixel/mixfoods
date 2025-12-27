@@ -215,23 +215,8 @@ const WaiterView = ({ store }: { store: any }) => {
                     <i className={`fas ${isOccupied ? 'fa-pen-to-square' : 'fa-plus'}`}></i>
                     {isOccupied ? 'Gerenciar Pedido' : 'Abrir Comanda'}
                   </button>
-                  
-                  {isOccupied && (
-                    <button
-                      onClick={() => navigate(`/table/${table.id}`)}
-                      className="w-full py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-slate-50 text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      Ver Detalhes
-                    </button>
-                  )}
                 </div>
               </div>
-              
-              {isOccupied && (
-                <div className="absolute top-2 right-2 flex gap-1">
-                  <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></div>
-                </div>
-              )}
             </div>
           );
         })}
@@ -246,7 +231,6 @@ const OrderEditor = ({ store }: { store: any }) => {
   const tableId = parseInt(id || '0');
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].id);
   const [cart, setCart] = useState<OrderItem[]>([]);
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const activeOrder = useMemo(() => 
@@ -262,7 +246,7 @@ const OrderEditor = ({ store }: { store: any }) => {
     if (product.price === 0) return;
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id && !item.notes);
-      if (existing && !editingNoteId) {
+      if (existing) {
         return prev.map(item => item.id === existing.id ? { ...item, quantity: item.quantity + 1 } : item);
       }
       return [...prev, {
@@ -310,13 +294,13 @@ const OrderEditor = ({ store }: { store: any }) => {
 
   const handleCancelOrder = async () => {
     if (!activeOrder) { navigate('/'); return; }
-    if (window.confirm(`CONFIRMAR EXCLUSÃO: O pedido da Mesa ${tableId} será apagado e a mesa liberada.`)) {
+    if (window.confirm(`Deseja EXCLUIR DEFINITIVAMENTE o pedido da Mesa ${tableId}?`)) {
       setIsSubmitting(true);
       try {
         await store.cancelOrderAction(activeOrder.id, tableId);
         navigate('/');
       } catch (err) {
-        alert("Erro ao excluir pedido. Verifique sua conexão e as regras do Firebase.");
+        alert("Erro ao excluir. Verifique as regras de segurança do seu Firebase.");
       } finally {
         setIsSubmitting(false);
       }
@@ -332,7 +316,7 @@ const OrderEditor = ({ store }: { store: any }) => {
           </Link>
           <div className="text-center">
             <h2 className="text-2xl font-black text-slate-900 tracking-tighter italic uppercase">Mesa {tableId}</h2>
-            <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest">Mix Foods Digital</p>
+            <p className="text-[9px] font-black text-rose-600 uppercase tracking-widest">Atendimento Mix</p>
           </div>
           <div className="w-12"></div>
         </header>
@@ -347,7 +331,7 @@ const OrderEditor = ({ store }: { store: any }) => {
               }`}
             >
               <span className="text-2xl">{cat.icon}</span>
-              <span className="font-black text-[9px] uppercase tracking-tighter whitespace-nowrap">{cat.name}</span>
+              <span className="font-black text-[9px] uppercase tracking-tighter">{cat.name}</span>
             </button>
           ))}
         </nav>
@@ -356,20 +340,20 @@ const OrderEditor = ({ store }: { store: any }) => {
           {PRODUCTS.filter(p => p.category === selectedCategory).map(product => {
             const isUnavailable = product.price === 0;
             return (
-              <div key={product.id} className="bg-white rounded-[2rem] p-4 shadow-sm border border-slate-100 flex flex-col group">
+              <div key={product.id} className="bg-white rounded-[2rem] p-4 shadow-sm border border-slate-100 flex flex-col">
                 <div className="relative mb-4 overflow-hidden rounded-2xl">
                   <img src={product.image} className="w-full aspect-square object-cover" />
-                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm">
-                    <span className="text-rose-600 font-black text-[10px] italic">R$ {product.price.toFixed(2)}</span>
+                  <div className="absolute top-2 right-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
+                    <span className="text-rose-600 font-black text-[10px]">R$ {product.price.toFixed(2)}</span>
                   </div>
                 </div>
                 <h3 className="font-black text-slate-800 text-[11px] mb-4 flex-1 uppercase italic">{product.name}</h3>
                 <button 
                   disabled={isUnavailable || isSubmitting}
                   onClick={() => addToCart(product)}
-                  className="w-full bg-slate-950 text-white py-3.5 rounded-xl text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all"
+                  className="w-full bg-slate-950 text-white py-3.5 rounded-xl text-[9px] font-black uppercase"
                 >
-                  <i className="fas fa-plus"></i> Lançar
+                  Lançar
                 </button>
               </div>
             );
@@ -377,10 +361,10 @@ const OrderEditor = ({ store }: { store: any }) => {
         </div>
       </div>
 
-      <div className="md:w-[420px] bg-white border-l border-slate-200 flex flex-col h-[65%] md:h-full shadow-[0_-20px_50px_rgba(0,0,0,0.1)] fixed md:static bottom-0 left-0 right-0 z-40 rounded-t-[3rem] md:rounded-none overflow-hidden">
+      <div className="md:w-[420px] bg-white border-l border-slate-200 flex flex-col h-[65%] md:h-full shadow-2xl fixed md:static bottom-0 left-0 right-0 z-40 rounded-t-[3rem] md:rounded-none overflow-hidden">
         <div className="px-8 py-5 border-b border-slate-50 flex justify-between items-center bg-slate-50/30">
-          <h3 className="text-xl font-black text-slate-900 tracking-tighter italic">Resumo</h3>
-          <div className="bg-rose-600 text-white h-10 w-10 rounded-xl flex items-center justify-center font-black text-sm">
+          <h3 className="text-xl font-black text-slate-900 italic">Resumo</h3>
+          <div className="bg-rose-600 text-white h-10 w-10 rounded-xl flex items-center justify-center font-black">
             {cart.reduce((acc, i) => acc + i.quantity, 0)}
           </div>
         </div>
@@ -389,8 +373,8 @@ const OrderEditor = ({ store }: { store: any }) => {
           {cart.map(item => (
             <div key={item.id} className="border-b border-slate-50 pb-5 mb-5 flex justify-between items-center">
               <div>
-                <h4 className="font-black text-slate-800 text-[12px] uppercase italic">{item.name}</h4>
-                {item.notes && <p className="text-[10px] text-amber-600 font-bold uppercase">{item.notes}</p>}
+                <h4 className="font-black text-slate-800 text-[12px] uppercase">{item.name}</h4>
+                <p className="text-[10px] text-slate-400 font-bold">UN R$ {item.price.toFixed(2)}</p>
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 rounded-lg bg-slate-100 font-black">-</button>
@@ -406,8 +390,8 @@ const OrderEditor = ({ store }: { store: any }) => {
             <span className="text-slate-500 font-black uppercase text-[10px]">Total</span>
             <span className="text-2xl font-black italic">R$ {cart.reduce((acc, item) => acc + (item.price * item.quantity), 0).toFixed(2)}</span>
           </div>
-          <button onClick={handleSave} className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-sm uppercase mb-3">Enviar Pedido</button>
-          <button onClick={handleCancelOrder} className="w-full bg-white/5 text-slate-400 py-3 rounded-xl font-black text-[10px] uppercase">Excluir Pedido</button>
+          <button onClick={handleSave} disabled={isSubmitting} className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-sm uppercase mb-3">Confirmar</button>
+          <button onClick={handleCancelOrder} disabled={isSubmitting} className="w-full bg-white/5 text-slate-400 py-3 rounded-xl font-black text-[10px] uppercase">Excluir Pedido</button>
         </div>
       </div>
     </div>
@@ -426,8 +410,8 @@ const AdminView = ({ store }: { store: any }) => {
   return (
     <div className="p-4 md:p-10 max-w-7xl mx-auto pb-40">
       <header className="flex justify-between items-end mb-10">
-        <h2 className="text-4xl font-black text-slate-950 tracking-tighter italic uppercase">Monitor Mix</h2>
-        <div className="bg-rose-600 text-white px-6 py-2 rounded-full font-black text-[10px]">{activeOrders.length} EM PREPARO</div>
+        <h2 className="text-4xl font-black text-slate-950 tracking-tighter italic uppercase">Cozinha</h2>
+        <div className="bg-rose-600 text-white px-6 py-2 rounded-full font-black text-[10px] uppercase">{activeOrders.length} Pendentes</div>
       </header>
       
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
@@ -447,9 +431,9 @@ const AdminView = ({ store }: { store: any }) => {
             </div>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <button onClick={() => handlePrint(order)} className="bg-slate-100 py-4 rounded-xl font-black text-[10px] uppercase">Imprimir</button>
-              <button onClick={() => store.closeOrder(order.id)} className="bg-emerald-500 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg shadow-emerald-100">Finalizar</button>
+              <button onClick={() => store.closeOrder(order.id)} className="bg-emerald-500 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-lg shadow-emerald-100">Pago</button>
             </div>
-            <button onClick={() => store.cancelOrderAction(order.id, order.tableId)} className="w-full text-rose-500 font-black text-[10px] uppercase border border-rose-50 py-3 rounded-xl hover:bg-rose-50">Excluir Pedido</button>
+            <button onClick={() => store.cancelOrderAction(order.id, order.tableId)} className="w-full text-rose-500 font-black text-[10px] uppercase border border-rose-50 py-3 rounded-xl">Cancelar</button>
           </div>
         ))}
       </div>
@@ -488,13 +472,12 @@ const DashboardView = ({ store }: { store: any }) => {
   const chartData = Object.entries(productStats).map(([name, value]) => ({ name, value })).sort((a:any, b:any) => b.value - a.value).slice(0, 5);
 
   const handleDeleteHistory = async (orderId: string) => {
-    if (window.confirm("EXCLUIR PERMANENTEMENTE: Deseja remover esta venda do histórico e do banco de dados?")) {
+    if (window.confirm("Deseja EXCLUIR DEFINITIVAMENTE esta venda do histórico e do banco?")) {
       setIsDeleting(orderId);
       try {
         await store.deleteHistoryOrder(orderId);
       } catch (err) {
-        console.error(err);
-        alert("FALHA AO DELETAR: O banco de dados recusou a operação. Verifique se você permitiu o 'delete' nas regras do Firestore.");
+        alert("Erro ao excluir do banco. Verifique suas regras do Firestore.");
       } finally {
         setIsDeleting(null);
       }
@@ -505,7 +488,7 @@ const DashboardView = ({ store }: { store: any }) => {
     <div className="p-4 md:p-10 max-w-7xl mx-auto pb-48 animate-fadeIn">
       <header className="flex flex-col md:flex-row justify-between items-start gap-6 mb-12">
         <div>
-          <h2 className="text-4xl font-black text-slate-950 tracking-tighter italic uppercase">Financeiro</h2>
+          <h2 className="text-4xl font-black text-slate-950 italic uppercase">Financeiro</h2>
           <div className="flex gap-2 mt-4">
             {['HOJE', 'ONTEM', 'DATA'].map(f => (
               <button key={f} onClick={() => setFilter(f as any)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase ${filter === f ? 'bg-rose-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100'}`}>
@@ -513,18 +496,16 @@ const DashboardView = ({ store }: { store: any }) => {
               </button>
             ))}
           </div>
-          {filter === 'DATA' && <input type="date" value={customDate} onChange={(e) => setCustomDate(e.target.value)} className="mt-3 bg-white border border-slate-100 rounded-xl px-4 py-2 text-[10px] font-black" />}
         </div>
         <div className="bg-slate-950 p-6 rounded-[2.5rem] text-white md:w-64 shadow-xl">
-          <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Caixa ({filter})</p>
+          <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Total {filter}</p>
           <p className="text-3xl font-black italic">R$ {total.toFixed(2)}</p>
-          <p className="text-[9px] text-emerald-400 font-bold mt-1 uppercase">{filteredOrders.length} PEDIDOS</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm min-h-[400px]">
-          <h3 className="text-xl font-black text-slate-900 mb-8 italic uppercase">Top 5 Mais Pedidos</h3>
+        <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
+          <h3 className="text-xl font-black text-slate-900 mb-8 italic uppercase">Produtos Mais Vendidos</h3>
           <div className="h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
@@ -538,11 +519,11 @@ const DashboardView = ({ store }: { store: any }) => {
           </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm min-h-[400px]">
-          <h3 className="text-xl font-black text-slate-900 mb-8 italic uppercase">Histórico de Vendas</h3>
-          <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+        <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
+          <h3 className="text-xl font-black text-slate-900 mb-8 italic uppercase">Histórico Recente</h3>
+          <div className="space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
             {filteredOrders.map(o => (
-              <div key={o.id} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 group relative transition-all ${isDeleting === o.id ? 'opacity-30 scale-95 blur-[2px]' : ''}`}>
+              <div key={o.id} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 group transition-all ${isDeleting === o.id ? 'opacity-30' : ''}`}>
                 <div>
                   <p className="text-sm font-black italic uppercase">Mesa {o.tableId}</p>
                   <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleTimeString()}</p>
@@ -552,20 +533,13 @@ const DashboardView = ({ store }: { store: any }) => {
                   <button 
                     disabled={isDeleting !== null}
                     onClick={() => handleDeleteHistory(o.id)}
-                    className="p-3 text-slate-300 hover:text-rose-600 transition-colors md:opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed bg-white/50 rounded-xl"
-                    title="Excluir Venda Permanentemente"
+                    className="p-3 text-slate-300 hover:text-rose-600 md:opacity-0 group-hover:opacity-100 transition-all"
                   >
-                    {isDeleting === o.id ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-trash-can"></i>}
+                    <i className="fas fa-trash-can"></i>
                   </button>
                 </div>
               </div>
             ))}
-            {filteredOrders.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-                <i className="fas fa-receipt text-3xl mb-3 opacity-20"></i>
-                <p className="text-[10px] font-black uppercase tracking-widest">Nenhuma venda encontrada</p>
-              </div>
-            )}
           </div>
         </div>
       </div>

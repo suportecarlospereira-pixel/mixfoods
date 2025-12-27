@@ -31,7 +31,7 @@ try {
   db = getFirestore(app);
   useFirebase = true;
 } catch (e) {
-  console.warn("Mix Foods: Cloud Sync offline.");
+  console.warn("Mix Foods Cloud: Desconectado.");
 }
 
 const localDb = {
@@ -92,7 +92,7 @@ export const dbService = {
   },
 
   async deleteOrder(orderId: string, tableId: number): Promise<void> {
-    // 1. Atualização Local Imediata
+    // 1. Atualização Local
     const allOrders = localDb.getOrders();
     localDb.saveOrders(allOrders.filter((o: any) => o.id !== orderId));
     
@@ -103,16 +103,14 @@ export const dbService = {
       localDb.saveTables(tables);
     }
 
-    // 2. Firebase - Exclusão Definitiva
+    // 2. Firestore
     if (useFirebase && db) {
       try {
-        // Deleta o pedido da coleção principal
         await deleteDoc(doc(db, "orders", orderId));
-        // Atualiza a mesa para disponível no banco
         await setDoc(doc(db, "tables", tableId.toString()), { id: tableId, status: 'AVAILABLE' }, { merge: true });
       } catch (e) {
-        console.error("Erro ao cancelar pedido no Firebase:", e);
-        throw e; // Lança para o App.tsx tratar
+        console.error("Erro na exclusão remota:", e);
+        throw e;
       }
     }
   },
@@ -127,7 +125,7 @@ export const dbService = {
       try {
         await deleteDoc(doc(db, "orders", orderId));
       } catch (e) {
-        console.error("Erro ao deletar do histórico no Firebase:", e);
+        console.error("Erro ao deletar histórico:", e);
         throw e;
       }
     }
