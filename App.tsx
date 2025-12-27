@@ -124,18 +124,18 @@ const WaiterView = ({ store }: { store: any }) => {
   });
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto animate-fadeIn pb-20">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto animate-fadeIn pb-24">
       <header className="mb-6 flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-black text-slate-900 italic">Mesas</h2>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Atendimento Digital</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Painel de Mesas</p>
         </div>
         <div className="md:hidden">
           <MixFoodsLogo size="w-10 h-10" animated={false} />
         </div>
       </header>
 
-      <div className="flex bg-slate-200/50 p-1 rounded-xl mb-6 gap-1 overflow-hidden">
+      <div className="flex bg-slate-200/50 p-1 rounded-xl mb-6 gap-1">
         {(['ALL', 'AVAILABLE', 'OCCUPIED'] as const).map((f) => (
           <button
             key={f}
@@ -199,10 +199,7 @@ const OrderEditor = ({ store }: { store: any }) => {
   const addToCart = (product: Product) => {
     if (product.price === 0) return;
     setCart(prev => {
-      const existing = prev.find(item => item.productId === product.id && !item.notes);
-      if (existing) {
-        return prev.map(item => item.id === existing.id ? { ...item, quantity: item.quantity + 1 } : item);
-      }
+      // Para itens com observação, tratamos como itens únicos
       return [...prev, {
         id: Math.random().toString(36).substr(2, 9),
         productId: product.id,
@@ -215,14 +212,12 @@ const OrderEditor = ({ store }: { store: any }) => {
     });
   };
 
-  const removeFromCart = (itemId: string) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === itemId);
-      if (existing && existing.quantity > 1) {
-        return prev.map(item => item.id === itemId ? { ...item, quantity: item.quantity - 1 } : item);
-      }
-      return prev.filter(item => item.id !== itemId);
-    });
+  const updateItemNotes = (itemId: string, notes: string) => {
+    setCart(prev => prev.map(item => item.id === itemId ? { ...item, notes } : item));
+  };
+
+  const removeItem = (itemId: string) => {
+    setCart(prev => prev.filter(item => item.id !== itemId));
   };
 
   const handleSave = async () => {
@@ -246,46 +241,29 @@ const OrderEditor = ({ store }: { store: any }) => {
     } catch (err) { navigate('/'); } finally { setIsSubmitting(false); }
   };
 
-  const handleCancelOrder = async () => {
-    if (!activeOrder) { navigate('/'); return; }
-    if (window.confirm(`ATENÇÃO: EXCLUIR DEFINITIVAMENTE o pedido da Mesa ${tableId}?`)) {
-      setIsSubmitting(true);
-      try {
-        await store.cancelOrderAction(activeOrder.id, tableId);
-        navigate('/');
-      } catch (err) {
-        alert("Erro ao excluir.");
-      } finally {
-        setIsSubmitting(false);
-      }
-    }
-  };
-
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const cartCount = cart.reduce((acc, i) => acc + i.quantity, 0);
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden relative">
-      {/* Header Fixo */}
       <header className="bg-white border-b border-slate-100 p-3 flex justify-between items-center z-30">
         <button onClick={() => navigate('/')} className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
           <i className="fas fa-chevron-left text-slate-600"></i>
         </button>
         <div className="text-center">
-          <h2 className="text-lg font-black italic uppercase">Mesa {tableId}</h2>
-          <p className="text-[8px] font-bold text-rose-600 uppercase tracking-widest">Lançamento de Pedido</p>
+          <h2 className="text-lg font-black italic uppercase leading-none">Mesa {tableId}</h2>
+          <p className="text-[8px] font-bold text-rose-600 uppercase tracking-widest mt-1">Lançar Pedido</p>
         </div>
         <div className="w-10"></div>
       </header>
 
-      {/* Categorias Fixas no Topo */}
       <nav className="bg-white border-b border-slate-100 flex gap-2 overflow-x-auto p-2 no-scrollbar sticky top-0 z-20">
         {CATEGORIES.map(cat => (
           <button
             key={cat.id}
             onClick={() => setSelectedCategory(cat.id)}
             className={`flex items-center gap-2 whitespace-nowrap px-4 py-2 rounded-full text-[10px] font-black uppercase transition-all ${
-              selectedCategory === cat.id ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-400'
+              selectedCategory === cat.id ? 'bg-rose-600 text-white shadow-md shadow-rose-100' : 'bg-slate-100 text-slate-400'
             }`}
           >
             <span>{cat.icon}</span>
@@ -294,94 +272,103 @@ const OrderEditor = ({ store }: { store: any }) => {
         ))}
       </nav>
 
-      {/* Grid de Produtos */}
-      <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-3 pb-32">
+      <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-3 pb-36">
         {PRODUCTS.filter(p => p.category === selectedCategory).map(product => {
           const isUnavailable = product.price === 0;
           return (
-            <div key={product.id} className="bg-white rounded-2xl p-3 shadow-sm flex flex-col border border-white">
-              <div className="relative mb-3 aspect-square rounded-xl overflow-hidden bg-slate-100">
+            <div key={product.id} className="bg-white rounded-2xl p-2 shadow-sm flex flex-col border border-white">
+              <div className="relative mb-2 aspect-square rounded-xl overflow-hidden bg-slate-100">
                 <img src={product.image} className="w-full h-full object-cover" loading="lazy" />
-                <div className="absolute top-1 right-1 bg-white/90 px-2 py-0.5 rounded-lg">
-                  <span className="text-rose-600 font-black text-[10px]">R$ {product.price.toFixed(2)}</span>
+                <div className="absolute top-1 right-1 bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded-lg shadow-sm">
+                  <span className="text-rose-600 font-black text-[9px]">R$ {product.price.toFixed(2)}</span>
                 </div>
               </div>
-              <h3 className="font-bold text-slate-800 text-[10px] mb-3 flex-1 uppercase leading-tight">{product.name}</h3>
+              <h3 className="font-bold text-slate-800 text-[9px] mb-2 px-1 flex-1 uppercase leading-tight line-clamp-2">{product.name}</h3>
               <button 
                 disabled={isUnavailable || isSubmitting}
                 onClick={() => addToCart(product)}
-                className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-[9px] font-black uppercase flex items-center justify-center gap-2 active:bg-rose-600"
+                className="w-full bg-slate-900 text-white py-2.5 rounded-xl text-[9px] font-black uppercase flex items-center justify-center gap-2 active:bg-rose-600 transition-colors"
               >
-                <i className="fas fa-plus"></i> Adicionar
+                <i className="fas fa-plus text-[8px]"></i> Lançar
               </button>
             </div>
           );
         })}
       </div>
 
-      {/* Botão Flutuante de Resumo (Mobile) */}
-      <div className="fixed bottom-20 left-4 right-4 z-40 md:bottom-6 md:left-auto md:right-6">
+      <div className="fixed bottom-20 left-4 right-4 z-40">
         <button
           onClick={() => setShowSummary(true)}
-          className="w-full bg-slate-950 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center justify-between border border-white/10 active:scale-95 transition-all"
+          className="w-full bg-slate-950 text-white px-5 py-4 rounded-2xl shadow-2xl flex items-center justify-between border border-white/10 active:scale-95 transition-all"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center font-black">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-rose-600 rounded-xl flex items-center justify-center font-black text-sm">
               {cartCount}
             </div>
-            <div>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-none mb-1">Ver Pedido</p>
+            <div className="text-left">
+              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest leading-none mb-1">Ver Itens</p>
               <p className="text-lg font-black italic leading-none">R$ {cartTotal.toFixed(2)}</p>
             </div>
           </div>
-          <i className="fas fa-chevron-up text-slate-500"></i>
+          <i className="fas fa-chevron-up text-slate-600"></i>
         </button>
       </div>
 
-      {/* Gaveta de Resumo (Drawer) */}
       {showSummary && (
         <div className="fixed inset-0 z-[100] animate-fadeIn">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setShowSummary(false)}></div>
-          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[2.5rem] shadow-2xl flex flex-col max-h-[85vh]">
-            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto my-4"></div>
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setShowSummary(false)}></div>
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[2rem] shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="w-10 h-1.5 bg-slate-200 rounded-full mx-auto my-3"></div>
             
-            <div className="px-6 py-4 flex justify-between items-center border-b border-slate-50">
-              <h3 className="text-xl font-black italic">CONFERÊNCIA</h3>
+            <div className="px-6 py-2 flex justify-between items-center border-b border-slate-50">
+              <h3 className="text-lg font-black italic uppercase">Resumo da Mesa {tableId}</h3>
               <button onClick={() => setShowSummary(false)} className="text-slate-400 p-2"><i className="fas fa-times"></i></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {cart.map(item => (
-                <div key={item.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
-                  <div>
-                    <h4 className="font-bold text-xs uppercase">{item.name}</h4>
-                    <p className="text-[10px] text-slate-400 font-bold">R$ {item.price.toFixed(2)} cada</p>
+                <div key={item.id} className="p-4 bg-slate-50 rounded-2xl space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-bold text-[11px] uppercase text-slate-800">{item.name}</h4>
+                      <p className="text-[10px] text-slate-500 font-bold">R$ {item.price.toFixed(2)}</p>
+                    </div>
+                    <button onClick={() => removeItem(item.id)} className="w-8 h-8 rounded-lg bg-white border border-rose-100 text-rose-500 flex items-center justify-center">
+                      <i className="fas fa-trash-can text-xs"></i>
+                    </button>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 font-black">-</button>
-                    <span className="font-black text-sm">{item.quantity}</span>
-                    <button onClick={() => addToCart(PRODUCTS.find(p => p.id === item.productId)!)} className="w-8 h-8 rounded-lg bg-white border border-slate-200 font-black">+</button>
+                  
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      placeholder="Alguma observação? (ex: sem cebola)"
+                      value={item.notes}
+                      onChange={(e) => updateItemNotes(item.id, e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-[10px] font-bold text-slate-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all"
+                    />
+                    <div className="absolute right-3 top-2.5 text-[8px] font-black text-rose-400 uppercase tracking-tighter pointer-events-none">OBS</div>
                   </div>
                 </div>
               ))}
               {cart.length === 0 && (
-                <div className="text-center py-10">
-                  <i className="fas fa-shopping-basket text-slate-200 text-4xl mb-3"></i>
-                  <p className="text-slate-400 text-xs font-bold uppercase">Nenhum item lançado</p>
+                <div className="text-center py-10 opacity-30">
+                  <i className="fas fa-cart-shopping text-4xl mb-3"></i>
+                  <p className="text-[10px] font-black uppercase">Mesa vazia</p>
                 </div>
               )}
             </div>
 
-            <div className="p-6 bg-slate-950 text-white space-y-3">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Total do Pedido</span>
+            <div className="p-5 bg-slate-950 text-white space-y-3">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">Total Acumulado</span>
                 <span className="text-2xl font-black italic">R$ {cartTotal.toFixed(2)}</span>
               </div>
-              <button onClick={handleSave} disabled={isSubmitting || cart.length === 0} className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-sm uppercase shadow-lg shadow-rose-900/20 active:bg-rose-700">
-                Confirmar e Enviar
-              </button>
-              <button onClick={handleCancelOrder} disabled={isSubmitting} className="w-full text-slate-500 py-3 text-[10px] font-black uppercase tracking-widest">
-                Excluir Comanda
+              <button 
+                onClick={handleSave} 
+                disabled={isSubmitting || cart.length === 0} 
+                className="w-full bg-rose-600 text-white py-4.5 rounded-2xl font-black text-xs uppercase shadow-lg shadow-rose-900/20 active:bg-rose-700 disabled:opacity-50 transition-all h-[56px] flex items-center justify-center"
+              >
+                {isSubmitting ? 'Processando...' : 'Confirmar Pedido'}
               </button>
             </div>
           </div>
@@ -407,43 +394,68 @@ const AdminView = ({ store }: { store: any }) => {
           <h2 className="text-2xl font-black text-slate-900 italic uppercase">Cozinha</h2>
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Controle de Produção</p>
         </div>
-        <div className="bg-rose-600 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase">{activeOrders.length} Pendentes</div>
+        <div className="bg-rose-600 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase shadow-lg shadow-rose-100">{activeOrders.length} Pendentes</div>
       </header>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {activeOrders.map((order: Order) => (
-          <div key={order.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col">
+          <div key={order.id} className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 flex flex-col relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-2 h-full bg-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-2xl font-black text-slate-900 italic">Mesa {order.tableId}</h3>
-              <span className="text-[10px] font-black text-slate-400">{new Date(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              <h3 className="text-3xl font-black text-slate-900 italic">Mesa {order.tableId}</h3>
+              <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-3 py-1 rounded-full">{new Date(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
             
-            <div className="flex-1 space-y-3 mb-6 bg-slate-50 p-4 rounded-2xl">
+            <div className="flex-1 space-y-4 mb-6 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
               {order.items.map((item, idx) => (
-                <div key={idx} className="flex gap-2 items-start">
-                  <span className="min-w-[24px] h-6 bg-slate-950 text-white rounded-lg flex items-center justify-center font-black text-[10px] mt-0.5">{item.quantity}</span>
-                  <div>
-                    <span className="font-bold text-xs text-slate-800 uppercase italic leading-tight">{item.name}</span>
-                    {item.notes && <p className="text-[9px] text-rose-500 font-black uppercase mt-0.5">Obs: {item.notes}</p>}
+                <div key={idx} className="border-b border-slate-100 last:border-0 pb-3 last:pb-0">
+                  <div className="flex gap-3 items-start">
+                    <span className="min-w-[28px] h-7 bg-slate-950 text-white rounded-lg flex items-center justify-center font-black text-[11px] mt-0.5 shadow-sm">{item.quantity}</span>
+                    <div className="flex-1">
+                      <span className="font-bold text-sm text-slate-800 uppercase italic leading-tight block">{item.name}</span>
+                      {item.notes && (
+                        <div className="mt-2 bg-rose-50 border-l-4 border-rose-500 p-2 rounded-md">
+                          <p className="text-[10px] text-rose-600 font-black uppercase tracking-tight italic">
+                            <i className="fas fa-exclamation-triangle mr-1"></i>
+                            OBS: {item.notes}
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => handlePrint(order)} className="bg-slate-100 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest">Imprimir</button>
-              <button onClick={() => store.closeOrder(order.id)} className="bg-emerald-500 text-white py-3 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg shadow-emerald-100">Pago</button>
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => handlePrint(order)} 
+                className="bg-white border border-slate-200 py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-colors"
+              >
+                <i className="fas fa-print mr-2"></i> Cupom
+              </button>
+              <button 
+                onClick={() => store.closeOrder(order.id)} 
+                className="bg-emerald-500 text-white py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-colors"
+              >
+                <i className="fas fa-check-double mr-2"></i> Pagar
+              </button>
             </div>
           </div>
         ))}
         {activeOrders.length === 0 && (
-          <div className="col-span-full py-20 text-center text-slate-300">
-            <i className="fas fa-check-circle text-4xl mb-3 opacity-20"></i>
-            <p className="text-xs font-black uppercase">Tudo em dia!</p>
+          <div className="col-span-full py-24 text-center">
+            <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
+               <i className="fas fa-check text-emerald-500 text-2xl"></i>
+            </div>
+            <p className="text-xs font-black uppercase text-slate-400">Nenhum pedido pendente</p>
           </div>
         )}
       </div>
-      <ThermalReceipt order={printingOrder} />
+      <div className="hidden">
+        <ThermalReceipt order={printingOrder} />
+      </div>
     </div>
   );
 };
@@ -478,7 +490,7 @@ const DashboardView = ({ store }: { store: any }) => {
   const chartData = Object.entries(productStats).map(([name, value]) => ({ name, value })).sort((a:any, b:any) => b.value - a.value).slice(0, 5);
 
   const handleDeleteHistory = async (orderId: string) => {
-    if (window.confirm("CONFIRMAR EXCLUSÃO: Esta venda será removida permanentemente do banco.")) {
+    if (window.confirm("APAGAR VENDA: Esta ação é definitiva e removerá a venda do relatório.")) {
       setIsDeleting(orderId);
       try {
         await store.deleteHistoryOrder(orderId);
@@ -494,7 +506,7 @@ const DashboardView = ({ store }: { store: any }) => {
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 animate-fadeIn">
       <header className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8">
         <div>
-          <h2 className="text-2xl font-black text-slate-950 italic uppercase leading-none mb-2">Financeiro</h2>
+          <h2 className="text-2xl font-black text-slate-950 italic uppercase leading-none mb-2">Relatórios</h2>
           <div className="flex gap-2 mt-4">
             {['HOJE', 'ONTEM', 'DATA'].map(f => (
               <button key={f} onClick={() => setFilter(f as any)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest ${filter === f ? 'bg-rose-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}>
@@ -503,7 +515,8 @@ const DashboardView = ({ store }: { store: any }) => {
             ))}
           </div>
         </div>
-        <div className="bg-slate-950 p-6 rounded-[2rem] text-white w-full md:w-64 shadow-xl flex justify-between md:block">
+        <div className="bg-slate-950 p-6 rounded-[2rem] text-white w-full md:w-64 shadow-xl flex justify-between md:block relative overflow-hidden">
+          <div className="absolute -top-4 -right-4 w-16 h-16 bg-white/5 rounded-full"></div>
           <div>
             <p className="text-slate-500 text-[10px] font-black uppercase mb-1">Caixa {filter}</p>
             <p className="text-3xl font-black italic leading-none">R$ {total.toFixed(2)}</p>
@@ -516,7 +529,7 @@ const DashboardView = ({ store }: { store: any }) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black text-slate-900 mb-6 italic uppercase">Mais Vendidos</h3>
+          <h3 className="text-sm font-black text-slate-900 mb-6 italic uppercase">Ranking de Produtos</h3>
           <div className="h-[250px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
@@ -531,26 +544,29 @@ const DashboardView = ({ store }: { store: any }) => {
         </div>
 
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-          <h3 className="text-sm font-black text-slate-900 mb-6 italic uppercase">Vendas Recentes</h3>
-          <div className="space-y-3 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+          <h3 className="text-sm font-black text-slate-900 mb-6 italic uppercase">Relatório Detalhado</h3>
+          <div className="space-y-3 max-h-[350px] overflow-y-auto custom-scrollbar pr-2">
             {filteredOrders.map(o => (
-              <div key={o.id} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 group transition-all ${isDeleting === o.id ? 'opacity-30' : ''}`}>
+              <div key={o.id} className={`flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 transition-all ${isDeleting === o.id ? 'opacity-30' : ''}`}>
                 <div>
                   <p className="text-xs font-black italic uppercase">Mesa {o.tableId}</p>
                   <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                   <p className="text-sm font-black italic">R$ {o.total.toFixed(2)}</p>
                   <button 
                     disabled={isDeleting !== null}
                     onClick={() => handleDeleteHistory(o.id)}
-                    className="p-2 text-slate-300 hover:text-rose-600 transition-colors"
+                    className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-300 hover:text-rose-600 transition-colors flex items-center justify-center"
                   >
-                    <i className="fas fa-trash-can text-xs"></i>
+                    <i className="fas fa-trash text-[10px]"></i>
                   </button>
                 </div>
               </div>
             ))}
+            {filteredOrders.length === 0 && (
+              <div className="text-center py-10 opacity-20 italic text-[10px] uppercase font-black">Caixa sem movimentação</div>
+            )}
           </div>
         </div>
       </div>
@@ -566,6 +582,7 @@ const App: React.FC = () => {
       <div className="mt-8 w-40 h-1 bg-white/10 rounded-full overflow-hidden">
         <div className="h-full bg-rose-600 animate-progress"></div>
       </div>
+      <p className="text-[10px] font-black text-slate-600 uppercase mt-4 tracking-[0.3em]">Sincronizando</p>
     </div>
   );
 
