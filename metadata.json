@@ -1,0 +1,6 @@
+
+{
+  "name": "Mix Foods - Sistema de Pedidos",
+  "description": "Um sistema completo para a Mix Foods com gestão de mesas para garçons, painel de pedidos em tempo real para o caixa, impressão de cupons térmicos e dashboard financeiro.",
+  "requestFramePermissions": []
+}
