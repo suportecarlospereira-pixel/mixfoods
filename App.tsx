@@ -33,6 +33,12 @@ interface Store {
 
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 
+// Helper para formatar data local YYYY-MM-DD (Evita bugs de timezone)
+const formatDateLocal = (timestamp: number | Date) => {
+  const d = new Date(timestamp);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+};
+
 // --- Componentes ---
 
 const ToastContainer = ({ toasts }: { toasts: ToastMsg[] }) => (
@@ -314,7 +320,6 @@ const OrderEditor = ({ store }: { store: Store }) => {
       timestamp: Date.now()
     }]);
     store.showToast(`${product.name} adicionado!`, 'success');
-    // UX: Limpa a busca para permitir lançar o próximo item rapidamente
     if (search) setSearch('');
   };
 
@@ -588,21 +593,34 @@ const AdminView = ({ store }: { store: Store }) => {
 };
 
 const DashboardView = ({ store }: { store: Store }) => {
-  const [filter, setFilter] = useState<'HOJE' | 'ONTEM'>('HOJE');
+  const [filterType, setFilterType] = useState<'HOJE' | 'ONTEM' | 'CUSTOM'>('HOJE');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
   
   const filteredOrders = useMemo(() => {
     const paid = store.orders.filter((o) => o.status === 'PAID');
-    const now = new Date();
+    const todayStr = formatDateLocal(new Date());
+
     return paid.filter((o) => {
-      const d = new Date(o.createdAt);
-      if (filter === 'HOJE') return d.toDateString() === now.toDateString();
-      if (filter === 'ONTEM') {
-        const yest = new Date(); yest.setDate(now.getDate() - 1);
-        return d.toDateString() === yest.toDateString();
+      const orderDateStr = formatDateLocal(o.createdAt);
+      
+      if (filterType === 'HOJE') {
+        return orderDateStr === todayStr;
+      }
+      if (filterType === 'ONTEM') {
+        const d = new Date(); d.setDate(d.getDate() - 1);
+        const yesterdayStr = formatDateLocal(d);
+        return orderDateStr === yesterdayStr;
+      }
+      if (filterType === 'CUSTOM') {
+        if (!dateStart && !dateEnd) return true; // Mostra tudo se não tiver data definida
+        if (dateStart && orderDateStr < dateStart) return false;
+        if (dateEnd && orderDateStr > dateEnd) return false;
+        return true;
       }
       return true;
     });
-  }, [store.orders, filter]);
+  }, [store.orders, filterType, dateStart, dateEnd]);
 
   const total = useMemo(() => filteredOrders.reduce((acc, o) => acc + o.total, 0), [filteredOrders]);
 
@@ -611,13 +629,28 @@ const DashboardView = ({ store }: { store: Store }) => {
       <header className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8">
         <div>
           <h2 className="text-2xl font-black text-slate-950 italic uppercase mb-2">Financeiro</h2>
-          <div className="flex gap-2 mt-4">
-            {['HOJE', 'ONTEM'].map(f => (
-              <button key={f} onClick={() => setFilter(f as any)} className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest ${filter === f ? 'bg-rose-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}>
-                {f}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button onClick={() => setFilterType('HOJE')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${filterType === 'HOJE' ? 'bg-rose-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}>HOJE</button>
+            <button onClick={() => setFilterType('ONTEM')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${filterType === 'ONTEM' ? 'bg-rose-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}>ONTEM</button>
+            <button onClick={() => setFilterType('CUSTOM')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${filterType === 'CUSTOM' ? 'bg-rose-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}>PERÍODO</button>
           </div>
+          {filterType === 'CUSTOM' && (
+             <div className="flex gap-2 mt-3 animate-fadeIn">
+               <input 
+                 type="date" 
+                 value={dateStart} 
+                 onChange={(e) => setDateStart(e.target.value)}
+                 className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 uppercase"
+               />
+               <span className="text-slate-300 self-center">-</span>
+               <input 
+                 type="date" 
+                 value={dateEnd} 
+                 onChange={(e) => setDateEnd(e.target.value)}
+                 className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-600 uppercase"
+               />
+             </div>
+          )}
         </div>
         <div className="bg-slate-950 p-6 rounded-[2rem] text-white w-full md:w-64 shadow-2xl border border-white/5 relative overflow-hidden">
           <div className="absolute -top-6 -right-6 w-20 h-20 bg-rose-600/10 rounded-full"></div>
@@ -627,13 +660,16 @@ const DashboardView = ({ store }: { store: Store }) => {
       </header>
 
       <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-        <h3 className="text-sm font-black text-slate-900 mb-6 italic uppercase tracking-widest">Vendas Concluídas</h3>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-sm font-black text-slate-900 italic uppercase tracking-widest">Vendas Filtradas</h3>
+          <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-3 py-1 rounded-full">{filteredOrders.length} registros</span>
+        </div>
         <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
           {filteredOrders.map(o => (
             <div key={o.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 transition-all hover:bg-slate-100">
               <div>
                 <p className="text-xs font-black uppercase italic">Mesa {o.tableId}</p>
-                <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleTimeString()}</p>
+                <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleString()}</p>
               </div>
               <div className="flex items-center gap-4">
                 <p className="text-sm font-black italic">R$ {o.total.toFixed(2)}</p>
@@ -641,7 +677,7 @@ const DashboardView = ({ store }: { store: Store }) => {
               </div>
             </div>
           ))}
-          {filteredOrders.length === 0 && <div className="text-center py-20 text-slate-300 italic font-black text-[10px] uppercase">Sem movimentação no período</div>}
+          {filteredOrders.length === 0 && <div className="text-center py-20 text-slate-300 italic font-black text-[10px] uppercase">Nenhuma venda encontrada neste período</div>}
         </div>
       </div>
     </div>
