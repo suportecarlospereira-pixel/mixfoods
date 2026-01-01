@@ -10,7 +10,7 @@ import { INITIAL_TABLE_COUNT, PRODUCTS, CATEGORIES } from './constants';
 import ThermalReceipt from './components/ThermalReceipt';
 import { dbService } from './services/dbService';
 
-// --- Types & Helpers ---
+// --- Interfaces & Helpers ---
 
 interface ToastMsg {
   id: number;
@@ -22,6 +22,7 @@ interface Store {
   tables: TableType[];
   orders: Order[];
   loading: boolean;
+  toasts: ToastMsg[]; // Expondo toasts corretamente
   addOrUpdateOrder: (order: Order) => Promise<boolean>;
   updateOrderStatus: (orderId: string, status: Order['status']) => Promise<boolean>;
   closeOrder: (orderId: string) => Promise<boolean>;
@@ -106,7 +107,7 @@ const useStore = (): Store => {
         unsubTables = dbService.subscribeTables(setTables);
       } catch (err) {
         console.error("Erro Store Init:", err);
-        showToast("Erro ao conectar ao banco de dados", 'error');
+        showToast("Erro ao conectar ao banco.", 'error');
         setLoading(false);
       }
     };
@@ -115,6 +116,7 @@ const useStore = (): Store => {
   }, []);
 
   const addOrUpdateOrder = async (order: Order) => {
+    const prevOrders = [...orders]; // Backup para rollback
     try {
       setOrders(prev => {
         const idx = prev.findIndex(o => o.id === order.id);
@@ -123,15 +125,17 @@ const useStore = (): Store => {
       });
       await dbService.saveOrder(order);
       await dbService.updateTableStatus(order.tableId, 'OCCUPIED');
-      showToast("Pedido salvo com sucesso!", 'success');
+      showToast("Pedido salvo!", 'success');
       return true;
     } catch (e) {
-      showToast("Erro ao salvar pedido.", 'error');
+      setOrders(prevOrders); // Rollback em caso de erro
+      showToast("Erro ao salvar. Tente novamente.", 'error');
       return false;
     }
   };
 
   const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+    const prevOrders = [...orders];
     try {
       const order = orders.find(o => o.id === orderId);
       if (!order) return false;
@@ -140,29 +144,37 @@ const useStore = (): Store => {
       await dbService.saveOrder(updated);
       return true;
     } catch (e) {
+      setOrders(prevOrders);
       showToast("Erro ao atualizar status.", 'error');
       return false;
     }
   };
 
   const closeOrder = async (orderId: string) => {
+    const prevOrders = [...orders];
+    const prevTables = [...tables];
     try {
       const order = orders.find(o => o.id === orderId);
       if (!order) return false;
       const updated: Order = { ...order, status: 'PAID' };
       setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
       setTables(prev => prev.map(t => t.id === order.tableId ? { ...t, status: 'AVAILABLE' } : t));
+      
       await dbService.saveOrder(updated);
       await dbService.updateTableStatus(order.tableId, 'AVAILABLE');
-      showToast("Conta fechada e mesa liberada!", 'success');
+      showToast("Conta fechada!", 'success');
       return true;
     } catch (e) {
+      setOrders(prevOrders);
+      setTables(prevTables);
       showToast("Erro ao fechar conta.", 'error');
       return false;
     }
   };
 
   const cancelOrderAction = async (orderId: string, tableId: number) => {
+    const prevOrders = [...orders];
+    const prevTables = [...tables];
     try {
       setOrders(prev => prev.filter(o => o.id !== orderId));
       setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'AVAILABLE' } : t));
@@ -170,6 +182,8 @@ const useStore = (): Store => {
       showToast("Pedido cancelado.", 'info');
       return true;
     } catch (e) {
+      setOrders(prevOrders);
+      setTables(prevTables);
       showToast("Erro ao cancelar.", 'error');
       return false;
     }
@@ -179,16 +193,12 @@ const useStore = (): Store => {
     try {
       setOrders(prev => prev.filter(o => o.id !== orderId));
       await dbService.deleteHistoryOrder(orderId);
-      showToast("Registro excluído do histórico.", 'info');
+      showToast("Registro excluído.", 'info');
       return true;
     } catch (e) { return false; }
   };
 
-  // Inject toast container into DOM (could use context, but keeping simple)
-  // This is a bit of a hack for the hook to render UI, but effective for this structure
-  (window as any).__toasts = toasts; 
-
-  return { tables, orders, addOrUpdateOrder, updateOrderStatus, closeOrder, cancelOrderAction, deleteHistoryOrder, loading, showToast };
+  return { tables, orders, toasts, addOrUpdateOrder, updateOrderStatus, closeOrder, cancelOrderAction, deleteHistoryOrder, loading, showToast };
 };
 
 const Sidebar = () => (
@@ -286,7 +296,6 @@ const OrderEditor = ({ store }: { store: Store }) => {
       if (activeOrder) setCart(activeOrder.items); else setCart([]);
       initialized.current = true;
     } else {
-      // Sincroniza apenas se o carrinho estava vazio e apareceu um pedido do servidor (delay)
       if (cart.length === 0 && activeOrder && activeOrder.items.length > 0) {
         setCart(activeOrder.items);
       }
@@ -359,15 +368,22 @@ const OrderEditor = ({ store }: { store: Store }) => {
       </header>
 
       <div className="px-3 pt-3 pb-1 bg-white">
-        <div className="relative">
-          <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-          <input 
-            type="text" 
-            placeholder="Buscar produto..." 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-100 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-rose-500/20"
-          />
+        <div className="relative flex items-center gap-2">
+          <div className="relative flex-1">
+            <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input 
+              type="text" 
+              placeholder="Buscar produto..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-slate-100 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-rose-500/20"
+            />
+          </div>
+          {search && (
+            <button onClick={() => setSearch('')} className="bg-slate-200 text-slate-500 w-8 h-8 rounded-xl flex items-center justify-center">
+                <i className="fas fa-times text-xs"></i>
+            </button>
+          )}
         </div>
       </div>
 
@@ -632,7 +648,6 @@ const DashboardView = ({ store }: { store: Store }) => {
 
 const App: React.FC = () => {
   const store = useStore();
-  const toasts = (window as any).__toasts || [];
   
   if (store.loading) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950">
@@ -649,7 +664,7 @@ const App: React.FC = () => {
       <div className="flex flex-col md:flex-row min-h-screen bg-slate-50">
         <Sidebar />
         <ConnectionStatus />
-        <ToastContainer toasts={toasts} />
+        <ToastContainer toasts={store.toasts} />
         <main className="flex-1 overflow-x-hidden">
           <Routes>
             <Route path="/" element={<WaiterView store={store} />} />
