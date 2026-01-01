@@ -22,7 +22,7 @@ interface Store {
   tables: TableType[];
   orders: Order[];
   loading: boolean;
-  toasts: ToastMsg[]; // Expondo toasts corretamente
+  toasts: ToastMsg[];
   addOrUpdateOrder: (order: Order) => Promise<boolean>;
   updateOrderStatus: (orderId: string, status: Order['status']) => Promise<boolean>;
   closeOrder: (orderId: string) => Promise<boolean>;
@@ -33,7 +33,7 @@ interface Store {
 
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 
-// --- Components ---
+// --- Componentes ---
 
 const ToastContainer = ({ toasts }: { toasts: ToastMsg[] }) => (
   <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none">
@@ -116,7 +116,7 @@ const useStore = (): Store => {
   }, []);
 
   const addOrUpdateOrder = async (order: Order) => {
-    const prevOrders = [...orders]; // Backup para rollback
+    const prevOrders = [...orders]; 
     try {
       setOrders(prev => {
         const idx = prev.findIndex(o => o.id === order.id);
@@ -128,7 +128,7 @@ const useStore = (): Store => {
       showToast("Pedido salvo!", 'success');
       return true;
     } catch (e) {
-      setOrders(prevOrders); // Rollback em caso de erro
+      setOrders(prevOrders);
       showToast("Erro ao salvar. Tente novamente.", 'error');
       return false;
     }
@@ -314,6 +314,8 @@ const OrderEditor = ({ store }: { store: Store }) => {
       timestamp: Date.now()
     }]);
     store.showToast(`${product.name} adicionado!`, 'success');
+    // UX: Limpa a busca para permitir lançar o próximo item rapidamente
+    if (search) setSearch('');
   };
 
   const updateItemNotes = (itemId: string, notes: string) => {
@@ -380,7 +382,7 @@ const OrderEditor = ({ store }: { store: Store }) => {
             />
           </div>
           {search && (
-            <button onClick={() => setSearch('')} className="bg-slate-200 text-slate-500 w-8 h-8 rounded-xl flex items-center justify-center">
+            <button onClick={() => setSearch('')} className="bg-slate-200 text-slate-500 w-8 h-8 rounded-xl flex items-center justify-center active:scale-90 transition-transform">
                 <i className="fas fa-times text-xs"></i>
             </button>
           )}
