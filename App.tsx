@@ -105,16 +105,25 @@ const useStore = (): Store => {
     const order = orders.find(o => o.id === orderId);
     if (order) {
       const updated = { ...order, status: 'PAID' } as Order;
+      // Atualização otimista para fechar rápido
+      setOrders(prev => prev.map(o => o.id === orderId ? updated : o));
+      setTables(prev => prev.map(t => t.id === order.tableId ? { ...t, status: 'AVAILABLE' } : t));
+
       await dbService.saveOrder(updated);
       await dbService.updateTableStatus(order.tableId, 'AVAILABLE');
     }
   };
 
   const cancelOrderAction = async (orderId: string, tableId: number) => {
+    // Atualização otimista UI: Remove o pedido e libera a mesa imediatamente na tela
+    setOrders(prev => prev.filter(o => o.id !== orderId));
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'AVAILABLE' } : t));
+
     await dbService.deleteOrder(orderId, tableId);
   };
 
   const deleteHistoryOrder = async (orderId: string) => {
+    setOrders(prev => prev.filter(o => o.id !== orderId));
     await dbService.deleteHistoryOrder(orderId);
   };
 
@@ -209,26 +218,18 @@ const OrderEditor = ({ store }: { store: Store }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   
-  // Encontra o pedido ativo no store
   const activeOrder = useMemo(() => 
     store.orders.find((o) => o.tableId === tableId && o.status !== 'PAID' && o.status !== 'CANCELLED'),
     [store.orders, tableId]
   );
 
-  // Ref para controlar se já inicializamos o carrinho com os dados do banco
-  // Isso evita que, se o banco atualizar enquanto o usuário digita, ele perca o que digitou.
   const initialized = useRef(false);
 
   useEffect(() => {
     if (!initialized.current) {
-      if (activeOrder) {
-        setCart(activeOrder.items);
-      } else {
-        setCart([]);
-      }
+      if (activeOrder) setCart(activeOrder.items); else setCart([]);
       initialized.current = true;
     } else {
-      // Se já inicializou, só atualiza se o carrinho estiver vazio e aparecer um pedido (caso de delay de carregamento)
       if (cart.length === 0 && activeOrder && activeOrder.items.length > 0) {
         setCart(activeOrder.items);
       }
@@ -403,7 +404,6 @@ const OrderEditor = ({ store }: { store: Store }) => {
 const AdminView = ({ store }: { store: Store }) => {
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   
-  // Memoiza para evitar re-render
   const activeOrders = useMemo(() => 
     store.orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED'), 
     [store.orders]
@@ -411,8 +411,13 @@ const AdminView = ({ store }: { store: Store }) => {
 
   const handlePrint = (order: Order) => {
     setPrintingOrder(order);
-    // Pequeno delay para garantir que o componente de recibo renderizou com os dados novos
     setTimeout(() => window.print(), 100);
+  };
+
+  const handleDelete = (order: Order) => {
+    if (window.confirm(`Tem certeza que deseja CANCELAR o pedido da Mesa ${order.tableId}? Isso irá excluir o pedido e liberar a mesa.`)) {
+      store.cancelOrderAction(order.id, order.tableId);
+    }
   };
 
   return (
@@ -450,6 +455,9 @@ const AdminView = ({ store }: { store: Store }) => {
             <div className="grid grid-cols-2 gap-2 mt-auto">
               <button onClick={() => handlePrint(order)} className="bg-slate-100 py-4 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-colors">Imprimir</button>
               <button onClick={() => store.closeOrder(order.id)} className="bg-emerald-500 text-white py-4 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-colors">Pago</button>
+              <button onClick={() => handleDelete(order)} className="col-span-2 bg-red-50 text-red-600 border border-red-100 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-red-100 transition-colors flex items-center justify-center gap-2">
+                <i className="fas fa-trash-can"></i> Cancelar Pedido
+              </button>
             </div>
           </div>
         ))}
