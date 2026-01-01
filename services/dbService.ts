@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { Order, Table, TableStatus } from '../types';
 
-// Configuração Hardcoded (Como solicitado)
+// Configuração Firebase (Hardcoded como solicitado)
 const firebaseConfig = {
   apiKey: "AIzaSyANvrHIoDjbBI71_TkC75MHzILLcVRcuyY",
   authDomain: "mixfoods-e5066.firebaseapp.com",
@@ -28,17 +28,16 @@ let db: Firestore | null = null;
 let useFirebase = false;
 
 try {
-  // Inicializa apenas se estiver no ambiente navegador/cliente
   if (typeof window !== 'undefined') {
     const app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     useFirebase = true;
   }
 } catch (e) {
-  console.warn("Mix Foods Cloud: Rodando Offline (Erro na conexão Firebase).", e);
+  console.warn("Mix Foods: Modo Offline forçado (Erro Firebase)", e);
 }
 
-// Helpers para LocalStorage
+// Helper LocalStorage Seguro
 const localDb = {
   getOrders: (): Order[] => {
     try { return JSON.parse(localStorage.getItem('mix_orders') || '[]'); } catch { return []; }
@@ -62,16 +61,14 @@ export const dbService = {
   subscribeOrders(callback: (orders: Order[]) => void) {
     if (useFirebase && db) {
       const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-      // Escuta mudanças em tempo real
       return onSnapshot(q, (snapshot) => {
         const orders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Order));
         callback(orders);
       }, (err) => {
-        console.error("Erro Firestore (Orders):", err);
-        callback(localDb.getOrders()); // Fallback
+        console.error("Erro Stream Orders:", err);
+        callback(localDb.getOrders());
       });
     } else {
-      // Fallback para LocalStorage
       const handler = () => callback(localDb.getOrders());
       window.addEventListener('storage_sync', handler);
       handler();
@@ -86,7 +83,7 @@ export const dbService = {
         const tables = snapshot.docs.map(doc => doc.data() as Table);
         callback(tables);
       }, (err) => {
-        console.error("Erro Firestore (Tables):", err);
+        console.error("Erro Stream Tables:", err);
         callback(localDb.getTables());
       });
     } else {
@@ -98,18 +95,19 @@ export const dbService = {
   },
 
   async saveOrder(order: Order): Promise<void> {
-    // 1. Salva Local (Optimistic UI)
+    // UI Otimista (Local)
     const orders = localDb.getOrders();
     const idx = orders.findIndex((o) => o.id === order.id);
     if (idx >= 0) orders[idx] = order; else orders.push(order);
     localDb.saveOrders(orders);
 
-    // 2. Salva na Nuvem
+    // Nuvem
     if (useFirebase && db) {
       try {
         await setDoc(doc(db, "orders", order.id), order, { merge: true });
       } catch (e) {
-        console.error("Erro ao salvar pedido na nuvem:", e);
+        console.error("Erro Save Cloud:", e);
+        throw e; // Propaga erro para a UI saber
       }
     }
   },
@@ -130,7 +128,8 @@ export const dbService = {
         await deleteDoc(doc(db, "orders", orderId));
         await setDoc(doc(db, "tables", tableId.toString()), { id: tableId, status: 'AVAILABLE' }, { merge: true });
       } catch (e) {
-        console.error("Erro ao deletar pedido:", e);
+        console.error("Erro Delete Cloud:", e);
+        throw e;
       }
     }
   },
@@ -158,13 +157,11 @@ export const dbService = {
   },
 
   async init(tableCount: number): Promise<void> {
-    // Inicializa mesas locais se vazio
     if (localDb.getTables().length === 0) {
       const initialTables = Array.from({ length: tableCount }, (_, i) => ({ id: i + 1, status: 'AVAILABLE' as TableStatus }));
       localDb.saveTables(initialTables);
     }
     
-    // Inicializa mesas no Firebase se vazio
     if (useFirebase && db) {
       try {
         const snapshot = await getDocs(collection(db, "tables"));
@@ -174,7 +171,7 @@ export const dbService = {
           }
         }
       } catch (e) {
-        console.error("Erro init firebase:", e);
+        console.error("Erro Init Cloud:", e);
       }
     }
   }
