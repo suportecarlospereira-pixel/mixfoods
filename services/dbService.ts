@@ -8,12 +8,12 @@ import {
   onSnapshot, 
   query, 
   orderBy,
+  limit,
   deleteDoc,
   Firestore
 } from 'firebase/firestore';
 import { Order, Table, TableStatus } from '../types';
 
-// Configuração Firebase (Hardcoded como solicitado)
 const firebaseConfig = {
   apiKey: "AIzaSyANvrHIoDjbBI71_TkC75MHzILLcVRcuyY",
   authDomain: "mixfoods-e5066.firebaseapp.com",
@@ -34,10 +34,9 @@ try {
     useFirebase = true;
   }
 } catch (e) {
-  console.warn("Mix Foods: Modo Offline forçado (Erro Firebase)", e);
+  console.warn("Mix Foods: Modo Offline (Erro Firebase)", e);
 }
 
-// Helper LocalStorage Seguro
 const localDb = {
   getOrders: (): Order[] => {
     try { return JSON.parse(localStorage.getItem('mix_orders') || '[]'); } catch { return []; }
@@ -60,7 +59,8 @@ export const dbService = {
 
   subscribeOrders(callback: (orders: Order[]) => void) {
     if (useFirebase && db) {
-      const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
+      // OTIMIZAÇÃO: Traz apenas os últimos 100 pedidos para não travar o app
+      const q = query(collection(db, "orders"), orderBy("createdAt", "desc"), limit(100));
       return onSnapshot(q, (snapshot) => {
         const orders = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Order));
         callback(orders);
@@ -95,19 +95,17 @@ export const dbService = {
   },
 
   async saveOrder(order: Order): Promise<void> {
-    // UI Otimista (Local)
     const orders = localDb.getOrders();
     const idx = orders.findIndex((o) => o.id === order.id);
     if (idx >= 0) orders[idx] = order; else orders.push(order);
     localDb.saveOrders(orders);
 
-    // Nuvem
     if (useFirebase && db) {
       try {
         await setDoc(doc(db, "orders", order.id), order, { merge: true });
       } catch (e) {
         console.error("Erro Save Cloud:", e);
-        throw e; // Propaga erro para a UI saber
+        throw e;
       }
     }
   },
