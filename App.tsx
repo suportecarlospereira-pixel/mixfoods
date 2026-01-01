@@ -1,25 +1,31 @@
-
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import { 
-  Table, 
+  Table as TableType, 
   Product, 
   Order, 
   OrderItem, 
-  TableStatus,
 } from './types';
 import { INITIAL_TABLE_COUNT, PRODUCTS, CATEGORIES } from './constants';
 import ThermalReceipt from './components/ThermalReceipt';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer
-} from 'recharts';
 import { dbService } from './services/dbService';
+
+// --- Interfaces & Helpers ---
+
+interface Store {
+  tables: TableType[];
+  orders: Order[];
+  loading: boolean;
+  addOrUpdateOrder: (order: Order) => Promise<void>;
+  closeOrder: (orderId: string) => Promise<void>;
+  cancelOrderAction: (orderId: string, tableId: number) => Promise<void>;
+  deleteHistoryOrder: (orderId: string) => Promise<void>;
+}
+
+// Gerador de ID simples e único
+const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+
+// --- Componentes ---
 
 const MixFoodsLogo = ({ size = "w-16 h-16" }) => (
   <div className={`${size} relative flex items-center justify-center`}>
@@ -32,7 +38,13 @@ const MixFoodsLogo = ({ size = "w-16 h-16" }) => (
 );
 
 const ConnectionStatus = () => {
-  const isCloud = dbService.isCloudActive();
+  const [isCloud, setIsCloud] = useState(dbService.isCloudActive());
+
+  useEffect(() => {
+    const check = setInterval(() => setIsCloud(dbService.isCloudActive()), 3000);
+    return () => clearInterval(check);
+  }, []);
+
   return (
     <div className="fixed top-3 right-3 z-[100] flex items-center gap-2 bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-slate-100">
       <div className={`w-1.5 h-1.5 rounded-full ${isCloud ? 'bg-emerald-500' : 'bg-orange-500'}`}></div>
@@ -43,28 +55,48 @@ const ConnectionStatus = () => {
   );
 };
 
-const useStore = () => {
-  const [tables, setTables] = useState<Table[]>([]);
+const useStore = (): Store => {
+  const [tables, setTables] = useState<TableType[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    dbService.init(INITIAL_TABLE_COUNT).then(() => {
-      const unsubscribeOrders = dbService.subscribeOrders((newOrders) => {
-        setOrders(newOrders);
+    let unsubOrders: (() => void) | undefined;
+    let unsubTables: (() => void) | undefined;
+
+    const start = async () => {
+      try {
+        await dbService.init(INITIAL_TABLE_COUNT);
+        unsubOrders = dbService.subscribeOrders((data) => {
+          setOrders(data);
+          setLoading(false);
+        });
+        unsubTables = dbService.subscribeTables(setTables);
+      } catch (err) {
+        console.error("Erro ao iniciar store:", err);
         setLoading(false);
-      });
-      const unsubscribeTables = dbService.subscribeTables((newTables) => {
-        setTables(newTables);
-      });
-      return () => {
-        unsubscribeOrders();
-        unsubscribeTables();
-      };
-    });
+      }
+    };
+    start();
+
+    return () => {
+      if (unsubOrders) unsubOrders();
+      if (unsubTables) unsubTables();
+    };
   }, []);
 
   const addOrUpdateOrder = async (order: Order) => {
+    // Atualização otimista
+    setOrders(prev => {
+      const idx = prev.findIndex(o => o.id === order.id);
+      if (idx >= 0) {
+        const newOrders = [...prev];
+        newOrders[idx] = order;
+        return newOrders;
+      }
+      return [order, ...prev];
+    });
+    
     await dbService.saveOrder(order);
     await dbService.updateTableStatus(order.tableId, 'OCCUPIED');
   };
@@ -72,8 +104,8 @@ const useStore = () => {
   const closeOrder = async (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     if (order) {
-      const updatedOrder = { ...order, status: 'PAID' } as Order;
-      await dbService.saveOrder(updatedOrder);
+      const updated = { ...order, status: 'PAID' } as Order;
+      await dbService.saveOrder(updated);
       await dbService.updateTableStatus(order.tableId, 'AVAILABLE');
     }
   };
@@ -112,15 +144,15 @@ const Sidebar = () => (
   </nav>
 );
 
-const WaiterView = ({ store }: { store: any }) => {
+const WaiterView = ({ store }: { store: Store }) => {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<'ALL' | 'AVAILABLE' | 'OCCUPIED'>('ALL');
 
-  const filteredTables = store.tables.filter((t: Table) => {
+  const filteredTables = useMemo(() => store.tables.filter((t) => {
     if (filter === 'AVAILABLE') return t.status === 'AVAILABLE';
     if (filter === 'OCCUPIED') return t.status === 'OCCUPIED';
     return true;
-  });
+  }), [store.tables, filter]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto animate-fadeIn pb-24">
@@ -146,8 +178,8 @@ const WaiterView = ({ store }: { store: any }) => {
         ))}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-        {filteredTables.map((table: Table) => {
-          const activeOrder = store.orders.find((o: Order) => o.tableId === table.id && o.status !== 'PAID' && o.status !== 'CANCELLED');
+        {filteredTables.map((table) => {
+          const activeOrder = store.orders.find((o) => o.tableId === table.id && o.status !== 'PAID' && o.status !== 'CANCELLED');
           const isOccupied = table.status === 'OCCUPIED';
           return (
             <button
@@ -168,7 +200,7 @@ const WaiterView = ({ store }: { store: any }) => {
   );
 };
 
-const OrderEditor = ({ store }: { store: any }) => {
+const OrderEditor = ({ store }: { store: Store }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const tableId = parseInt(id || '0');
@@ -177,19 +209,36 @@ const OrderEditor = ({ store }: { store: any }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   
+  // Encontra o pedido ativo no store
   const activeOrder = useMemo(() => 
-    store.orders.find((o: Order) => o.tableId === tableId && o.status !== 'PAID' && o.status !== 'CANCELLED'),
+    store.orders.find((o) => o.tableId === tableId && o.status !== 'PAID' && o.status !== 'CANCELLED'),
     [store.orders, tableId]
   );
 
+  // Ref para controlar se já inicializamos o carrinho com os dados do banco
+  // Isso evita que, se o banco atualizar enquanto o usuário digita, ele perca o que digitou.
+  const initialized = useRef(false);
+
   useEffect(() => {
-    if (activeOrder) setCart(activeOrder.items); else setCart([]);
-  }, [activeOrder, tableId]);
+    if (!initialized.current) {
+      if (activeOrder) {
+        setCart(activeOrder.items);
+      } else {
+        setCart([]);
+      }
+      initialized.current = true;
+    } else {
+      // Se já inicializou, só atualiza se o carrinho estiver vazio e aparecer um pedido (caso de delay de carregamento)
+      if (cart.length === 0 && activeOrder && activeOrder.items.length > 0) {
+        setCart(activeOrder.items);
+      }
+    }
+  }, [activeOrder]);
 
   const addToCart = (product: Product) => {
     if (product.price === 0) return;
     setCart(prev => [...prev, {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       productId: product.id,
       name: product.name,
       price: product.price,
@@ -212,7 +261,7 @@ const OrderEditor = ({ store }: { store: any }) => {
     setIsSubmitting(true);
     try {
       const orderData: Order = {
-        id: activeOrder?.id || Math.random().toString(36).substr(2, 9),
+        id: activeOrder?.id || generateId(),
         tableId,
         items: cart,
         status: activeOrder?.status || 'OPEN',
@@ -221,7 +270,12 @@ const OrderEditor = ({ store }: { store: any }) => {
       };
       await store.addOrUpdateOrder(orderData);
       navigate('/');
-    } catch (err) { navigate('/'); } finally { setIsSubmitting(false); }
+    } catch (err) { 
+      console.error(err);
+      navigate('/'); 
+    } finally { 
+      setIsSubmitting(false); 
+    }
   };
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
@@ -259,7 +313,7 @@ const OrderEditor = ({ store }: { store: any }) => {
         {PRODUCTS.filter(p => p.category === selectedCategory).map(product => (
           <div key={product.id} className="bg-white rounded-2xl p-2 shadow-sm flex flex-col border border-white">
             <div className="relative mb-2 aspect-square rounded-xl overflow-hidden bg-slate-100">
-              <img src={product.image} className="w-full h-full object-cover" />
+              <img src={product.image} className="w-full h-full object-cover" alt={product.name} />
               <div className="absolute top-1 right-1 bg-white/90 px-2 py-0.5 rounded-lg shadow-sm">
                 <span className="text-rose-600 font-black text-[9px]">R$ {product.price.toFixed(2)}</span>
               </div>
@@ -309,12 +363,12 @@ const OrderEditor = ({ store }: { store: any }) => {
                     <button onClick={() => removeItem(item.id)} className="text-rose-500 p-1"><i className="fas fa-trash-can text-xs"></i></button>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Observações (Tirar ingredientes, etc)</label>
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Observações</label>
                     <div className="flex items-center gap-2">
                       <input 
                         type="text"
                         placeholder="Ex: Sem cebola, s/ maionese..."
-                        value={item.notes}
+                        value={item.notes || ''}
                         onChange={(e) => updateItemNotes(item.id, e.target.value)}
                         className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-[10px] font-bold text-slate-600 focus:border-rose-500 focus:outline-none"
                       />
@@ -346,12 +400,18 @@ const OrderEditor = ({ store }: { store: any }) => {
   );
 };
 
-const AdminView = ({ store }: { store: any }) => {
+const AdminView = ({ store }: { store: Store }) => {
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
-  const activeOrders = store.orders.filter((o: Order) => o.status !== 'PAID' && o.status !== 'CANCELLED');
+  
+  // Memoiza para evitar re-render
+  const activeOrders = useMemo(() => 
+    store.orders.filter((o) => o.status !== 'PAID' && o.status !== 'CANCELLED'), 
+    [store.orders]
+  );
 
   const handlePrint = (order: Order) => {
     setPrintingOrder(order);
+    // Pequeno delay para garantir que o componente de recibo renderizou com os dados novos
     setTimeout(() => window.print(), 100);
   };
 
@@ -365,7 +425,7 @@ const AdminView = ({ store }: { store: any }) => {
         <div className="bg-rose-600 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase shadow-lg shadow-rose-100">{activeOrders.length} Pendentes</div>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {activeOrders.map((order: Order) => (
+        {activeOrders.map((order) => (
           <div key={order.id} className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 flex flex-col relative overflow-hidden group">
              <div className="absolute top-0 left-0 w-1 h-full bg-rose-500"></div>
             <div className="flex justify-between items-center mb-5">
@@ -381,7 +441,7 @@ const AdminView = ({ store }: { store: any }) => {
                   </div>
                   {item.notes && (
                     <div className="mt-2 bg-rose-600 text-white p-2 rounded-lg text-[10px] font-black uppercase italic animate-pulse">
-                      *** ATENÇÃO: {item.notes} ***
+                      *** {item.notes} ***
                     </div>
                   )}
                 </div>
@@ -407,14 +467,13 @@ const AdminView = ({ store }: { store: any }) => {
   );
 };
 
-const DashboardView = ({ store }: { store: any }) => {
-  const [filter, setFilter] = useState<'HOJE' | 'ONTEM' | 'DATA'>('HOJE');
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-
+const DashboardView = ({ store }: { store: Store }) => {
+  const [filter, setFilter] = useState<'HOJE' | 'ONTEM'>('HOJE');
+  
   const filteredOrders = useMemo(() => {
-    const paid = store.orders.filter((o: Order) => o.status === 'PAID');
+    const paid = store.orders.filter((o) => o.status === 'PAID');
     const now = new Date();
-    return paid.filter((o: Order) => {
+    return paid.filter((o) => {
       const d = new Date(o.createdAt);
       if (filter === 'HOJE') return d.toDateString() === now.toDateString();
       if (filter === 'ONTEM') {
@@ -425,7 +484,7 @@ const DashboardView = ({ store }: { store: any }) => {
     });
   }, [store.orders, filter]);
 
-  const total = filteredOrders.reduce((acc: number, o: Order) => acc + o.total, 0);
+  const total = useMemo(() => filteredOrders.reduce((acc, o) => acc + o.total, 0), [filteredOrders]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 animate-fadeIn">
@@ -473,6 +532,7 @@ const DashboardView = ({ store }: { store: any }) => {
 
 const App: React.FC = () => {
   const store = useStore();
+  
   if (store.loading) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950">
       <MixFoodsLogo size="w-24 h-24" />
