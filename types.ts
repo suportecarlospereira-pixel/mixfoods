@@ -1,4 +1,3 @@
-
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'WAITING_PAYMENT';
 
 export interface Product {
@@ -19,11 +18,12 @@ export interface OrderItem {
   timestamp: number;
 }
 
+// Status expandidos para melhor controle de cozinha
 export interface Order {
   id: string;
   tableId: number;
   items: OrderItem[];
-  status: 'OPEN' | 'PREPARING' | 'DONE' | 'PAID' | 'CANCELLED';
+  status: 'OPEN' | 'PREPARING' | 'READY' | 'PAID' | 'CANCELLED';
   createdAt: number;
   total: number;
 }
