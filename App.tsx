@@ -1,4 +1,13 @@
-@@ -11,13 +11,7 @@ import ThermalReceipt from './components/ThermalReceipt';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { HashRouter, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
+import { 
+  Table as TableType, 
+  Product, 
+  Order, 
+  OrderItem, 
+} from './types';
+import { INITIAL_TABLE_COUNT, PRODUCTS, CATEGORIES } from './constants';
+import ThermalReceipt from './components/ThermalReceipt';
 import { dbService } from './services/dbService';
 
 // --- Interfaces & Helpers ---
@@ -13,7 +22,7 @@ interface ToastMsg { id: number; message: string; type: 'success' | 'error' | 'i
 interface Store {
   tables: TableType[];
   orders: Order[];
-@@ -32,27 +26,17 @@ interface Store {
+@@ -32,27 +26,17 @@
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
@@ -45,7 +54,7 @@ const ToastContainer = ({ toasts }: { toasts: ToastMsg[] }) => (
         <span className="font-bold text-xs uppercase tracking-wide">{t.message}</span>
       </div>
     ))}
-@@ -71,22 +55,19 @@ const MixFoodsLogo = ({ size = "w-16 h-16" }) => (
+@@ -71,22 +55,19 @@
 
 const ConnectionStatus = () => {
   const [isCloud, setIsCloud] = useState(dbService.isCloudActive());
@@ -72,7 +81,7 @@ const ConnectionStatus = () => {
 const useStore = (): Store => {
   const [tables, setTables] = useState<TableType[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-@@ -100,178 +81,90 @@ const useStore = (): Store => {
+@@ -100,178 +81,90 @@
   };
 
   useEffect(() => {
@@ -294,7 +303,7 @@ const WaiterView = ({ store }: { store: Store }) => {
             </button>
           );
         })}
-@@ -284,201 +177,129 @@ const OrderEditor = ({ store }: { store: Store }) => {
+@@ -284,201 +177,129 @@
   const { id } = useParams();
   const navigate = useNavigate();
   const tableId = parseInt(id || '0');
@@ -568,7 +577,7 @@ const WaiterView = ({ store }: { store: Store }) => {
               </button>
             </div>
           </div>
-@@ -488,222 +309,108 @@ const OrderEditor = ({ store }: { store: Store }) => {
+@@ -488,222 +309,108 @@
   );
 };
 
