@@ -596,7 +596,9 @@ const DashboardView = ({ store }: { store: Store }) => {
   const [filterType, setFilterType] = useState<'HOJE' | 'ONTEM' | 'CUSTOM'>('HOJE');
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
+  const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   
+  // Filtra as ordens PAGAS
   const filteredOrders = useMemo(() => {
     const paid = store.orders.filter((o) => o.status === 'PAID');
     const todayStr = formatDateLocal(new Date());
@@ -613,7 +615,7 @@ const DashboardView = ({ store }: { store: Store }) => {
         return orderDateStr === yesterdayStr;
       }
       if (filterType === 'CUSTOM') {
-        if (!dateStart && !dateEnd) return true; // Mostra tudo se não tiver data definida
+        if (!dateStart && !dateEnd) return true;
         if (dateStart && orderDateStr < dateStart) return false;
         if (dateEnd && orderDateStr > dateEnd) return false;
         return true;
@@ -622,12 +624,37 @@ const DashboardView = ({ store }: { store: Store }) => {
     });
   }, [store.orders, filterType, dateStart, dateEnd]);
 
+  // Calcula o total monetário
   const total = useMemo(() => filteredOrders.reduce((acc, o) => acc + o.total, 0), [filteredOrders]);
+
+  // Lógica para os "Mais Vendidos" baseada nas ordens filtradas
+  const topProducts = useMemo(() => {
+    const productCounts: Record<string, number> = {};
+    filteredOrders.forEach(order => {
+      order.items.forEach(item => {
+        // Soma a quantidade de cada item
+        const qty = item.quantity;
+        productCounts[item.name] = (productCounts[item.name] || 0) + qty;
+      });
+    });
+
+    // Converte para array, ordena e pega os top 5
+    return Object.entries(productCounts)
+      .sort(([, qtyA], [, qtyB]) => qtyB - qtyA)
+      .slice(0, 5);
+  }, [filteredOrders]);
+
+  // Função para imprimir
+  const handlePrint = (order: Order) => {
+    setPrintingOrder(order);
+    // Pequeno delay para o React renderizar o cupom antes de abrir a janela de print
+    setTimeout(() => window.print(), 200);
+  };
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24 animate-fadeIn">
       <header className="flex flex-col md:flex-row justify-between items-start gap-4 mb-8">
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl font-black text-slate-950 italic uppercase mb-2">Financeiro</h2>
           <div className="flex flex-wrap gap-2 mt-4">
             <button onClick={() => setFilterType('HOJE')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors ${filterType === 'HOJE' ? 'bg-rose-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}>HOJE</button>
@@ -652,6 +679,8 @@ const DashboardView = ({ store }: { store: Store }) => {
              </div>
           )}
         </div>
+        
+        {/* Card Total */}
         <div className="bg-slate-950 p-6 rounded-[2rem] text-white w-full md:w-64 shadow-2xl border border-white/5 relative overflow-hidden">
           <div className="absolute -top-6 -right-6 w-20 h-20 bg-rose-600/10 rounded-full"></div>
           <p className="text-slate-500 text-[10px] font-black uppercase mb-1 tracking-widest">Total Líquido</p>
@@ -659,27 +688,66 @@ const DashboardView = ({ store }: { store: Store }) => {
         </div>
       </header>
 
-      <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-sm font-black text-slate-900 italic uppercase tracking-widest">Vendas Filtradas</h3>
-          <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-3 py-1 rounded-full">{filteredOrders.length} registros</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Painel de Mais Vendidos (Novo) */}
+        <div className="lg:col-span-1 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm h-fit">
+          <h3 className="text-sm font-black text-slate-900 italic uppercase tracking-widest mb-4 flex items-center gap-2">
+            <i className="fas fa-ranking-star text-amber-500"></i> Mais Vendidos
+          </h3>
+          <div className="space-y-3">
+            {topProducts.map(([name, count], index) => (
+              <div key={name} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <span className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-black ${index === 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-200 text-slate-500'}`}>
+                    {index + 1}º
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-700 uppercase truncate leading-tight">{name}</span>
+                </div>
+                <span className="text-xs font-black text-rose-600 whitespace-nowrap ml-2">{count} un</span>
+              </div>
+            ))}
+            {topProducts.length === 0 && (
+              <p className="text-center text-[10px] text-slate-300 uppercase py-4">Sem dados</p>
+            )}
+          </div>
         </div>
-        <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-          {filteredOrders.map(o => (
-            <div key={o.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 transition-all hover:bg-slate-100">
-              <div>
-                <p className="text-xs font-black uppercase italic">Mesa {o.tableId}</p>
-                <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleString()}</p>
+
+        {/* Lista de Vendas (Modificada com botão de Print) */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-sm font-black text-slate-900 italic uppercase tracking-widest">Histórico de Vendas</h3>
+            <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-3 py-1 rounded-full">{filteredOrders.length} registros</span>
+          </div>
+          <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+            {filteredOrders.map(o => (
+              <div key={o.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 transition-all hover:bg-slate-100 gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-black uppercase italic">Mesa {o.tableId}</p>
+                    {/* Botão para ver/reimprimir */}
+                    <button 
+                      onClick={() => handlePrint(o)}
+                      className="bg-white border border-slate-200 text-slate-600 w-6 h-6 rounded flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors"
+                      title="Ver Cupom / Reimprimir"
+                    >
+                      <i className="fas fa-print text-[10px]"></i>
+                    </button>
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleString()}</p>
+                </div>
+                <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+                  <p className="text-sm font-black italic">R$ {o.total.toFixed(2)}</p>
+                  <button onClick={() => store.deleteHistoryOrder(o.id)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><i className="fas fa-trash-can text-xs"></i></button>
+                </div>
               </div>
-              <div className="flex items-center gap-4">
-                <p className="text-sm font-black italic">R$ {o.total.toFixed(2)}</p>
-                <button onClick={() => store.deleteHistoryOrder(o.id)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><i className="fas fa-trash-can text-xs"></i></button>
-              </div>
-            </div>
-          ))}
-          {filteredOrders.length === 0 && <div className="text-center py-20 text-slate-300 italic font-black text-[10px] uppercase">Nenhuma venda encontrada neste período</div>}
+            ))}
+            {filteredOrders.length === 0 && <div className="text-center py-20 text-slate-300 italic font-black text-[10px] uppercase">Nenhuma venda encontrada neste período</div>}
+          </div>
         </div>
       </div>
+
+      {/* Componente Oculto para Impressão */}
+      <div className="hidden"><ThermalReceipt order={printingOrder} /></div>
     </div>
   );
 };
