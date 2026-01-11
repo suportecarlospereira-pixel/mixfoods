@@ -112,51 +112,44 @@ const PinModal = ({ onSuccess, onClose }: { onSuccess: () => void, onClose: () =
   );
 };
 
-// NOVO: Modal de Detalhes do Pedido
-const OrderDetailsModal = ({ order, onClose, onPrint }: { order: Order, onClose: () => void, onPrint: (o: Order) => void }) => {
+// --- Modal de Visualização do Cupom ---
+const CouponPreviewModal = ({ order, onClose }: { order: Order, onClose: () => void }) => {
   if (!order) return null;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
-    <div className="fixed inset-0 z-[150] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
-      <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fadeIn" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-          <div>
-             <h3 className="text-xl font-black italic uppercase text-slate-800">Mesa {order.tableId}</h3>
-             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{new Date(order.createdAt).toLocaleString()}</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-colors">
+    <div className="fixed inset-0 z-[150] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
+      <div className="flex flex-col h-full max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        
+        {/* Header do Modal */}
+        <div className="flex justify-between items-center mb-4 text-white">
+          <h3 className="text-lg font-black uppercase italic tracking-wider">Visualizar Cupom</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
             <i className="fas fa-times"></i>
           </button>
         </div>
-        
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-          {order.items.map((item, idx) => (
-            <div key={idx} className="flex justify-between items-start border-b border-dashed border-slate-100 pb-3 last:border-0 last:pb-0">
-               <div className="flex gap-3">
-                 <div className="font-black text-xs bg-slate-100 text-slate-600 w-6 h-6 flex items-center justify-center rounded-lg shrink-0">{item.quantity}</div>
-                 <div>
-                   <p className="font-bold text-xs text-slate-800 uppercase leading-tight">{item.name}</p>
-                   {item.notes && <p className="text-[10px] text-rose-500 font-bold italic mt-1 bg-rose-50 px-2 py-0.5 rounded-md inline-block">Obs: {item.notes}</p>}
-                 </div>
-               </div>
-               <span className="font-black text-xs text-slate-700 whitespace-nowrap ml-2">R$ {(item.price * item.quantity).toFixed(2)}</span>
-            </div>
-          ))}
+
+        {/* Área do Cupom (Scrollável) */}
+        <div className="bg-zinc-800 p-4 sm:p-8 rounded-3xl overflow-y-auto custom-scrollbar shadow-2xl border border-white/10 flex justify-center mb-4 flex-1">
+           {/* Wrapper branco para simular o papel */}
+           <div className="bg-white shadow-lg text-black w-fit h-fit min-h-[300px] pointer-events-none select-none origin-top scale-90 sm:scale-100 transition-transform">
+              <ThermalReceipt order={order} />
+           </div>
         </div>
 
-        <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">
-          <div className="flex justify-between items-end">
-            <span className="text-slate-400 font-bold text-xs uppercase tracking-widest">Total</span>
-            <span className="text-3xl font-black italic text-slate-900">R$ {order.total.toFixed(2)}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={onClose} className="py-3.5 rounded-xl bg-white border border-slate-200 text-slate-500 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-colors">
-              Fechar
-            </button>
-            <button onClick={() => onPrint(order)} className="py-3.5 rounded-xl bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 flex items-center justify-center gap-2 transition-colors shadow-lg">
-              <i className="fas fa-print"></i> Imprimir
-            </button>
-          </div>
+        {/* Ações */}
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={onClose} className="py-4 rounded-xl bg-slate-800 text-slate-300 font-black text-[10px] uppercase tracking-widest hover:bg-slate-700 transition-colors">
+            Fechar
+          </button>
+          <button onClick={handlePrint} className="py-4 rounded-xl bg-rose-600 text-white font-black text-[10px] uppercase tracking-widest hover:bg-rose-500 shadow-lg shadow-rose-900/20 flex items-center justify-center gap-2 transition-colors">
+            <i className="fas fa-print text-lg"></i> Imprimir Agora
+          </button>
         </div>
+
       </div>
     </div>
   );
@@ -918,7 +911,7 @@ const DashboardView = ({ store }: { store: Store }) => {
     setAiLoading(false);
   };
 
-  const handlePrint = (order: Order) => {
+  const handleQuickPrint = (order: Order) => {
     setPrintingOrder(order);
     setTimeout(() => window.print(), 200);
   };
@@ -1047,18 +1040,31 @@ const DashboardView = ({ store }: { store: Store }) => {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-black uppercase italic text-slate-800">Mesa {o.tableId}</p>
+                    
+                    {/* Botão explícito para ver o cupom */}
                     <button 
-                      onClick={(e) => { e.stopPropagation(); handlePrint(o); }}
-                      className="bg-white border border-slate-200 text-slate-400 w-6 h-6 rounded flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors"
-                      title="Impressão Rápida"
+                      onClick={(e) => { e.stopPropagation(); setViewingOrder(o); }}
+                      className="bg-blue-50 border border-blue-200 text-blue-600 px-2 py-1 rounded-lg flex items-center gap-1 hover:bg-blue-100 transition-colors"
+                      title="Ver Visualização do Cupom"
                     >
-                      <i className="fas fa-print text-[10px]"></i>
+                      <i className="fas fa-eye text-[10px]"></i>
+                      <span className="text-[9px] font-bold uppercase">Ver Cupom</span>
                     </button>
                   </div>
-                  <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleString()}</p>
+                  <p className="text-[9px] font-bold text-slate-400 mt-1">{new Date(o.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
                   <p className="text-sm font-black italic text-slate-900">R$ {o.total.toFixed(2)}</p>
+                  
+                  {/* Botão de Impressão Rápida (Mantido para conveniência) */}
+                  <button 
+                      onClick={(e) => { e.stopPropagation(); handleQuickPrint(o); }}
+                      className="bg-white border border-slate-200 text-slate-400 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-slate-100 transition-colors"
+                      title="Impressão Rápida"
+                    >
+                      <i className="fas fa-print text-xs"></i>
+                  </button>
+
                   <button onClick={(e) => { e.stopPropagation(); store.deleteHistoryOrder(o.id); }} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><i className="fas fa-trash-can text-xs"></i></button>
                 </div>
               </div>
@@ -1069,7 +1075,7 @@ const DashboardView = ({ store }: { store: Store }) => {
       </div>
       
       {/* Modais */}
-      {viewingOrder && <OrderDetailsModal order={viewingOrder} onClose={() => setViewingOrder(null)} onPrint={handlePrint} />}
+      {viewingOrder && <CouponPreviewModal order={viewingOrder} onClose={() => setViewingOrder(null)} />}
       <div className="hidden"><ThermalReceipt order={printingOrder} /></div>
     </div>
   );
