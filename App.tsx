@@ -45,7 +45,7 @@ const formatDateLocal = (timestamp: number | Date) => {
 
 const COLORS = ['#e11d48', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 
-// --- Componentes ---
+// --- Componentes Auxiliares ---
 
 const ToastContainer = ({ toasts }: { toasts: ToastMsg[] }) => (
   <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] flex flex-col gap-2 w-full max-w-sm px-4 pointer-events-none">
@@ -112,6 +112,56 @@ const PinModal = ({ onSuccess, onClose }: { onSuccess: () => void, onClose: () =
   );
 };
 
+// NOVO: Modal de Detalhes do Pedido
+const OrderDetailsModal = ({ order, onClose, onPrint }: { order: Order, onClose: () => void, onPrint: (o: Order) => void }) => {
+  if (!order) return null;
+  return (
+    <div className="fixed inset-0 z-[150] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn" onClick={onClose}>
+      <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-fadeIn" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div>
+             <h3 className="text-xl font-black italic uppercase text-slate-800">Mesa {order.tableId}</h3>
+             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{new Date(order.createdAt).toLocaleString()}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-rose-100 hover:text-rose-600 transition-colors">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+          {order.items.map((item, idx) => (
+            <div key={idx} className="flex justify-between items-start border-b border-dashed border-slate-100 pb-3 last:border-0 last:pb-0">
+               <div className="flex gap-3">
+                 <div className="font-black text-xs bg-slate-100 text-slate-600 w-6 h-6 flex items-center justify-center rounded-lg shrink-0">{item.quantity}</div>
+                 <div>
+                   <p className="font-bold text-xs text-slate-800 uppercase leading-tight">{item.name}</p>
+                   {item.notes && <p className="text-[10px] text-rose-500 font-bold italic mt-1 bg-rose-50 px-2 py-0.5 rounded-md inline-block">Obs: {item.notes}</p>}
+                 </div>
+               </div>
+               <span className="font-black text-xs text-slate-700 whitespace-nowrap ml-2">R$ {(item.price * item.quantity).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-6 bg-slate-50 border-t border-slate-100 space-y-4">
+          <div className="flex justify-between items-end">
+            <span className="text-slate-400 font-bold text-xs uppercase tracking-widest">Total</span>
+            <span className="text-3xl font-black italic text-slate-900">R$ {order.total.toFixed(2)}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={onClose} className="py-3.5 rounded-xl bg-white border border-slate-200 text-slate-500 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-colors">
+              Fechar
+            </button>
+            <button onClick={() => onPrint(order)} className="py-3.5 rounded-xl bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest hover:bg-slate-800 flex items-center justify-center gap-2 transition-colors shadow-lg">
+              <i className="fas fa-print"></i> Imprimir
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MixFoodsLogo = ({ size = "w-16 h-16" }) => (
   <div className={`${size} relative flex items-center justify-center`}>
     <div className="absolute inset-0 bg-red-600 rounded-2xl rotate-12 opacity-10"></div>
@@ -143,7 +193,6 @@ const ConnectionStatus = () => {
 const useStore = (): Store => {
   const [tables, setTables] = useState<TableType[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  // IDEA 3: Produtos gerenciados pelo estado (localStorage)
   const [products, setProducts] = useState<Product[]>(() => {
     try {
       const saved = localStorage.getItem('mix_products');
@@ -430,7 +479,6 @@ const OrderEditor = ({ store }: { store: Store }) => {
     if (success) navigate('/');
   };
 
-  // Usando store.products para refletir edições
   const filteredProducts = useMemo(() => {
     let list = store.products;
     if (search) {
@@ -572,7 +620,6 @@ const OrderEditor = ({ store }: { store: Store }) => {
   );
 };
 
-// IDEA 3: Menu Editor Component
 const MenuEditor = ({ store }: { store: Store }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<Product>>({
@@ -792,6 +839,7 @@ const DashboardView = ({ store }: { store: Store }) => {
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [aiAdvice, setAiAdvice] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   
@@ -835,7 +883,6 @@ const DashboardView = ({ store }: { store: Store }) => {
       .slice(0, 5);
   }, [filteredOrders]);
 
-  // IDEA 1: Dados para Gráficos
   const chartData = useMemo(() => {
     const byCategory: Record<string, number> = {};
     const byDay: Record<string, number> = {};
@@ -845,7 +892,6 @@ const DashboardView = ({ store }: { store: Store }) => {
        byDay[day] = (byDay[day] || 0) + o.total;
 
        o.items.forEach(i => {
-         // Tenta achar categoria pelo produto atual na store
          const prod = store.products.find(p => p.id === i.productId);
          const catName = prod ? CATEGORIES.find(c => c.id === prod.category)?.name : 'Outros';
          const name = catName || 'Outros';
@@ -859,7 +905,6 @@ const DashboardView = ({ store }: { store: Store }) => {
     };
   }, [filteredOrders, store.products]);
 
-  // IDEA 2: AI Integration
   const handleAskAi = async () => {
     setAiLoading(true);
     const dataSummary = {
@@ -914,7 +959,6 @@ const DashboardView = ({ store }: { store: Store }) => {
         </div>
       </header>
 
-      {/* IDEA 2: AI Consultant Section */}
       <div className="mb-6">
          {!aiAdvice ? (
            <button onClick={handleAskAi} disabled={aiLoading} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-4 rounded-2xl shadow-lg flex items-center justify-center gap-3 active:scale-95 transition-all">
@@ -937,7 +981,6 @@ const DashboardView = ({ store }: { store: Store }) => {
          )}
       </div>
 
-      {/* IDEA 1: Charts Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm h-80">
           <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Vendas por Dia</h3>
@@ -996,14 +1039,18 @@ const DashboardView = ({ store }: { store: Store }) => {
           </div>
           <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
             {filteredOrders.map(o => (
-              <div key={o.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 transition-all hover:bg-slate-100 gap-3">
+              <div 
+                key={o.id} 
+                onClick={() => setViewingOrder(o)}
+                className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-50 rounded-2xl border-l-4 border-emerald-500 transition-all hover:bg-white hover:shadow-md cursor-pointer gap-3 group"
+              >
                 <div>
                   <div className="flex items-center gap-2">
-                    <p className="text-xs font-black uppercase italic">Mesa {o.tableId}</p>
+                    <p className="text-xs font-black uppercase italic text-slate-800">Mesa {o.tableId}</p>
                     <button 
-                      onClick={() => handlePrint(o)}
-                      className="bg-white border border-slate-200 text-slate-600 w-6 h-6 rounded flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors"
-                      title="Ver Cupom / Reimprimir"
+                      onClick={(e) => { e.stopPropagation(); handlePrint(o); }}
+                      className="bg-white border border-slate-200 text-slate-400 w-6 h-6 rounded flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors"
+                      title="Impressão Rápida"
                     >
                       <i className="fas fa-print text-[10px]"></i>
                     </button>
@@ -1011,8 +1058,8 @@ const DashboardView = ({ store }: { store: Store }) => {
                   <p className="text-[9px] font-bold text-slate-400">{new Date(o.createdAt).toLocaleString()}</p>
                 </div>
                 <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
-                  <p className="text-sm font-black italic">R$ {o.total.toFixed(2)}</p>
-                  <button onClick={() => store.deleteHistoryOrder(o.id)} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><i className="fas fa-trash-can text-xs"></i></button>
+                  <p className="text-sm font-black italic text-slate-900">R$ {o.total.toFixed(2)}</p>
+                  <button onClick={(e) => { e.stopPropagation(); store.deleteHistoryOrder(o.id); }} className="text-slate-300 hover:text-rose-600 p-2 transition-colors"><i className="fas fa-trash-can text-xs"></i></button>
                 </div>
               </div>
             ))}
@@ -1020,6 +1067,9 @@ const DashboardView = ({ store }: { store: Store }) => {
           </div>
         </div>
       </div>
+      
+      {/* Modais */}
+      {viewingOrder && <OrderDetailsModal order={viewingOrder} onClose={() => setViewingOrder(null)} onPrint={handlePrint} />}
       <div className="hidden"><ThermalReceipt order={printingOrder} /></div>
     </div>
   );
@@ -1032,17 +1082,14 @@ const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // IDEA 4: Security Logic
   const handleNavigation = (path: string) => {
     if (path === '/' || path.startsWith('/table/')) {
       navigate(path);
     } else {
-      // Rotas protegidas: Admin e Dashboard
       if (isAdminUnlocked) {
         navigate(path);
       } else {
         setShowPinModal(true);
-        // Salva o destino para navegar após sucesso
         (window as any).pendingPath = path; 
       }
     }
@@ -1055,7 +1102,6 @@ const App: React.FC = () => {
     if (path) navigate(path);
   };
 
-  // Redirecionar se tentar acessar direto pela URL sem auth
   useEffect(() => {
     if ((location.pathname === '/admin' || location.pathname === '/dashboard') && !isAdminUnlocked) {
       navigate('/');
