@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { HashRouter, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
+import { HashRouter, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { 
   Table as TableType, 
   Product, 
   Order, 
   OrderItem, 
 } from './types';
-import { INITIAL_TABLE_COUNT, PRODUCTS, CATEGORIES } from './constants';
+import { INITIAL_TABLE_COUNT, PRODUCTS as INITIAL_PRODUCTS, CATEGORIES } from './constants';
 import ThermalReceipt from './components/ThermalReceipt';
 import { dbService } from './services/dbService';
+import { getBusinessInsights } from './services/geminiService';
 
 // --- Interfaces & Helpers ---
 
@@ -21,6 +23,7 @@ interface ToastMsg {
 interface Store {
   tables: TableType[];
   orders: Order[];
+  products: Product[];
   loading: boolean;
   toasts: ToastMsg[];
   addOrUpdateOrder: (order: Order) => Promise<boolean>;
@@ -28,16 +31,19 @@ interface Store {
   closeOrder: (orderId: string) => Promise<boolean>;
   cancelOrderAction: (orderId: string, tableId: number) => Promise<boolean>;
   deleteHistoryOrder: (orderId: string) => Promise<boolean>;
+  saveProduct: (product: Product) => void;
+  deleteProduct: (productId: string) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 
-// Helper para formatar data local YYYY-MM-DD (Evita bugs de timezone)
 const formatDateLocal = (timestamp: number | Date) => {
   const d = new Date(timestamp);
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
+
+const COLORS = ['#e11d48', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 
 // --- Componentes ---
 
@@ -58,6 +64,53 @@ const ToastContainer = ({ toasts }: { toasts: ToastMsg[] }) => (
     ))}
   </div>
 );
+
+const PinModal = ({ onSuccess, onClose }: { onSuccess: () => void, onClose: () => void }) => {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pin === 'foodmix') {
+      onSuccess();
+    } else {
+      setError(true);
+      setPin('');
+      setTimeout(() => setError(false), 1000);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl p-8 w-full max-w-xs shadow-2xl animate-fadeIn">
+        <div className="text-center mb-6">
+          <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3">
+            <i className="fas fa-lock text-xl"></i>
+          </div>
+          <h3 className="text-lg font-black uppercase text-slate-800">Acesso Restrito</h3>
+          <p className="text-[10px] text-slate-500 font-bold uppercase">Digite a senha do gerente</p>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <input 
+            type="password" 
+            autoFocus
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            className={`w-full text-center text-2xl font-black tracking-widest p-4 rounded-xl bg-slate-50 border-2 outline-none transition-colors ${
+              error ? 'border-rose-500 text-rose-500 bg-rose-50' : 'border-slate-200 focus:border-slate-800'
+            }`}
+            placeholder="****"
+          />
+          {error && <p className="text-center text-[10px] text-rose-600 font-bold mt-2 uppercase animate-pulse">Senha Incorreta</p>}
+          <div className="grid grid-cols-2 gap-2 mt-6">
+            <button type="button" onClick={onClose} className="py-3 rounded-xl font-black text-[10px] uppercase bg-slate-100 text-slate-500 hover:bg-slate-200">Cancelar</button>
+            <button type="submit" className="py-3 rounded-xl font-black text-[10px] uppercase bg-slate-900 text-white hover:bg-slate-800">Entrar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const MixFoodsLogo = ({ size = "w-16 h-16" }) => (
   <div className={`${size} relative flex items-center justify-center`}>
@@ -90,6 +143,15 @@ const ConnectionStatus = () => {
 const useStore = (): Store => {
   const [tables, setTables] = useState<TableType[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  // IDEA 3: Produtos gerenciados pelo estado (localStorage)
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const saved = localStorage.getItem('mix_products');
+      return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+    } catch {
+      return INITIAL_PRODUCTS;
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
 
@@ -120,6 +182,27 @@ const useStore = (): Store => {
     start();
     return () => { unsubOrders?.(); unsubTables?.(); };
   }, []);
+
+  const saveProduct = (product: Product) => {
+    setProducts(prev => {
+      const idx = prev.findIndex(p => p.id === product.id);
+      const newProducts = idx >= 0
+        ? prev.map(p => p.id === product.id ? product : p)
+        : [...prev, product];
+      localStorage.setItem('mix_products', JSON.stringify(newProducts));
+      return newProducts;
+    });
+    showToast("Cardápio atualizado!", 'success');
+  };
+
+  const deleteProduct = (productId: string) => {
+    setProducts(prev => {
+      const newProducts = prev.filter(p => p.id !== productId);
+      localStorage.setItem('mix_products', JSON.stringify(newProducts));
+      return newProducts;
+    });
+    showToast("Produto removido.", 'info');
+  };
 
   const addOrUpdateOrder = async (order: Order) => {
     const prevOrders = [...orders]; 
@@ -204,28 +287,28 @@ const useStore = (): Store => {
     } catch (e) { return false; }
   };
 
-  return { tables, orders, toasts, addOrUpdateOrder, updateOrderStatus, closeOrder, cancelOrderAction, deleteHistoryOrder, loading, showToast };
+  return { tables, orders, products, toasts, addOrUpdateOrder, updateOrderStatus, closeOrder, cancelOrderAction, deleteHistoryOrder, saveProduct, deleteProduct, loading, showToast };
 };
 
-const Sidebar = () => (
+const Sidebar = ({ onNavigate }: { onNavigate: (path: string) => void }) => (
   <nav className="fixed bottom-0 left-0 right-0 md:relative md:w-64 bg-slate-950 text-white p-2 md:p-5 flex md:flex-col justify-around md:justify-start gap-1 z-[60] border-t md:border-t-0 md:border-r border-white/5">
     <div className="hidden md:flex flex-col items-center mb-8 px-2 text-center mt-4">
       <MixFoodsLogo size="w-20 h-20" />
       <h1 className="text-xl font-black tracking-tighter text-white mt-3 italic uppercase">MIX FOODS</h1>
     </div>
     <div className="flex md:flex-col flex-1 justify-around md:justify-start md:gap-2">
-      <Link to="/" className="flex flex-col md:flex-row items-center gap-2 p-3 md:p-4 rounded-xl hover:bg-white/5 group">
+      <button onClick={() => onNavigate('/')} className="flex flex-col md:flex-row items-center gap-2 p-3 md:p-4 rounded-xl hover:bg-white/5 group w-full text-left">
         <i className="fas fa-table-cells text-blue-500"></i>
         <span className="text-[9px] md:text-sm font-bold uppercase">Mesas</span>
-      </Link>
-      <Link to="/admin" className="flex flex-col md:flex-row items-center gap-2 p-3 md:p-4 rounded-xl hover:bg-white/5 group">
+      </button>
+      <button onClick={() => onNavigate('/admin')} className="flex flex-col md:flex-row items-center gap-2 p-3 md:p-4 rounded-xl hover:bg-white/5 group w-full text-left">
         <i className="fas fa-fire-burner text-rose-500"></i>
-        <span className="text-[9px] md:text-sm font-bold uppercase">Cozinha</span>
-      </Link>
-      <Link to="/dashboard" className="flex flex-col md:flex-row items-center gap-2 p-3 md:p-4 rounded-xl hover:bg-white/5 group">
+        <span className="text-[9px] md:text-sm font-bold uppercase">Admin</span>
+      </button>
+      <button onClick={() => onNavigate('/dashboard')} className="flex flex-col md:flex-row items-center gap-2 p-3 md:p-4 rounded-xl hover:bg-white/5 group w-full text-left">
         <i className="fas fa-chart-pie text-amber-500"></i>
         <span className="text-[9px] md:text-sm font-bold uppercase">Painel</span>
-      </Link>
+      </button>
     </div>
   </nav>
 );
@@ -347,8 +430,9 @@ const OrderEditor = ({ store }: { store: Store }) => {
     if (success) navigate('/');
   };
 
+  // Usando store.products para refletir edições
   const filteredProducts = useMemo(() => {
-    let list = PRODUCTS;
+    let list = store.products;
     if (search) {
       const s = search.toLowerCase();
       list = list.filter(p => p.name.toLowerCase().includes(s));
@@ -356,7 +440,7 @@ const OrderEditor = ({ store }: { store: Store }) => {
       list = list.filter(p => p.category === selectedCategory);
     }
     return list;
-  }, [selectedCategory, search]);
+  }, [selectedCategory, search, store.products]);
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
   const cartCount = cart.reduce((acc, i) => acc + i.quantity, 0);
@@ -412,7 +496,7 @@ const OrderEditor = ({ store }: { store: Store }) => {
         {filteredProducts.map(product => (
           <div key={product.id} className="bg-white rounded-2xl p-2 shadow-sm flex flex-col border border-white">
             <div className="relative mb-2 aspect-square rounded-xl overflow-hidden bg-slate-100">
-              <img src={product.image} className="w-full h-full object-cover" alt={product.name} />
+              <img src={product.image || 'https://via.placeholder.com/400'} className="w-full h-full object-cover" alt={product.name} />
               <div className="absolute top-1 right-1 bg-white/90 px-2 py-0.5 rounded-lg shadow-sm">
                 <span className="text-rose-600 font-black text-[9px]">R$ {product.price.toFixed(2)}</span>
               </div>
@@ -488,7 +572,112 @@ const OrderEditor = ({ store }: { store: Store }) => {
   );
 };
 
+// IDEA 3: Menu Editor Component
+const MenuEditor = ({ store }: { store: Store }) => {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<Product>>({
+    category: CATEGORIES[0].id,
+    name: '',
+    price: 0,
+    image: ''
+  });
+
+  const handleEdit = (product: Product) => {
+    setEditingId(product.id);
+    setFormData(product);
+  };
+
+  const handleAddNew = () => {
+    setEditingId('NEW');
+    setFormData({ category: CATEGORIES[0].id, name: '', price: 0, image: '' });
+  };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || formData.price === undefined) return;
+    
+    const product: Product = {
+      id: editingId === 'NEW' ? generateId() : editingId!,
+      name: formData.name,
+      price: Number(formData.price),
+      category: formData.category || CATEGORIES[0].id,
+      image: formData.image || 'https://via.placeholder.com/400'
+    };
+    
+    store.saveProduct(product);
+    setEditingId(null);
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm("Remover este produto?")) {
+      store.deleteProduct(id);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-black uppercase italic">Gerenciar Cardápio</h3>
+        <button onClick={handleAddNew} className="bg-emerald-500 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase shadow-lg hover:bg-emerald-600 transition-colors">
+          <i className="fas fa-plus mr-1"></i> Novo Produto
+        </button>
+      </div>
+
+      {editingId && (
+        <div className="bg-white p-6 rounded-3xl shadow-lg border border-slate-100 animate-fadeIn">
+          <h4 className="font-black text-sm uppercase mb-4">{editingId === 'NEW' ? 'Adicionar Produto' : 'Editar Produto'}</h4>
+          <form onSubmit={handleSave} className="space-y-4">
+            <div>
+              <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">Nome</label>
+              <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-slate-800" required />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+               <div>
+                 <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">Preço (R$)</label>
+                 <input type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-slate-800" required />
+               </div>
+               <div>
+                 <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">Categoria</label>
+                 <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-slate-800">
+                   {CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                 </select>
+               </div>
+            </div>
+            <div>
+              <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">URL da Imagem (Opcional)</label>
+              <input type="text" value={formData.image} onChange={e => setFormData({...formData, image: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-bold outline-none focus:border-slate-800" placeholder="https://..." />
+            </div>
+            <div className="flex gap-2 justify-end pt-2">
+              <button type="button" onClick={() => setEditingId(null)} className="px-4 py-2 bg-slate-100 text-slate-500 rounded-lg font-black text-[10px] uppercase">Cancelar</button>
+              <button type="submit" className="px-4 py-2 bg-slate-900 text-white rounded-lg font-black text-[10px] uppercase">Salvar</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {store.products.map(p => (
+           <div key={p.id} className="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex gap-3 items-center">
+             <div className="w-12 h-12 bg-slate-100 rounded-lg overflow-hidden shrink-0">
+               <img src={p.image} className="w-full h-full object-cover" alt="" />
+             </div>
+             <div className="flex-1 min-w-0">
+               <p className="font-bold text-xs truncate">{p.name}</p>
+               <p className="text-[10px] text-slate-500 font-bold">R$ {p.price.toFixed(2)}</p>
+             </div>
+             <div className="flex flex-col gap-1">
+               <button onClick={() => handleEdit(p)} className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center hover:bg-blue-100"><i className="fas fa-pencil text-[10px]"></i></button>
+               <button onClick={() => handleDelete(p.id)} className="w-8 h-8 bg-rose-50 text-rose-600 rounded-lg flex items-center justify-center hover:bg-rose-100"><i className="fas fa-trash text-[10px]"></i></button>
+             </div>
+           </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const AdminView = ({ store }: { store: Store }) => {
+  const [tab, setTab] = useState<'KITCHEN' | 'MENU'>('KITCHEN');
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   
   const activeOrders = useMemo(() => 
@@ -514,79 +703,85 @@ const AdminView = ({ store }: { store: Store }) => {
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto pb-24">
-      <header className="flex justify-between items-end mb-8">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 italic uppercase">Cozinha</h2>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Painel de Produção</p>
+          <h2 className="text-2xl font-black text-slate-900 italic uppercase">Administração</h2>
+          <div className="flex gap-2 mt-4">
+            <button onClick={() => setTab('KITCHEN')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'KITCHEN' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}>Cozinha</button>
+            <button onClick={() => setTab('MENU')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${tab === 'MENU' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}>Cardápio</button>
+          </div>
         </div>
-        <div className="bg-rose-600 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase shadow-lg shadow-rose-100">{activeOrders.length} Pendentes</div>
+        {tab === 'KITCHEN' && <div className="bg-rose-600 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase shadow-lg shadow-rose-100">{activeOrders.length} Pendentes</div>}
       </header>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {activeOrders.map((order) => {
-          const isPrep = order.status === 'PREPARING';
-          const isReady = order.status === 'READY';
-          return (
-            <div key={order.id} className={`bg-white rounded-[2rem] p-6 shadow-sm border flex flex-col relative overflow-hidden group transition-all ${
-              isPrep ? 'border-amber-200 bg-amber-50' : isReady ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100'
-            }`}>
-              <div className={`absolute top-0 left-0 w-1 h-full ${
-                isPrep ? 'bg-amber-500' : isReady ? 'bg-emerald-500' : 'bg-rose-500'
-              }`}></div>
-              <div className="flex justify-between items-center mb-5">
-                <h3 className="text-3xl font-black text-slate-900 italic">Mesa {order.tableId}</h3>
-                <div className="flex flex-col items-end">
-                   <span className="text-[10px] font-black text-slate-400 bg-white/50 px-2 py-1 rounded-lg mb-1">{new Date(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                   <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                     isPrep ? 'bg-amber-200 text-amber-800' : isReady ? 'bg-emerald-200 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                   }`}>
-                     {isPrep ? 'Preparando' : isReady ? 'Pronto' : 'Aguardando'}
-                   </span>
+
+      {tab === 'MENU' ? <MenuEditor store={store} /> : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {activeOrders.map((order) => {
+            const isPrep = order.status === 'PREPARING';
+            const isReady = order.status === 'READY';
+            return (
+              <div key={order.id} className={`bg-white rounded-[2rem] p-6 shadow-sm border flex flex-col relative overflow-hidden group transition-all ${
+                isPrep ? 'border-amber-200 bg-amber-50' : isReady ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100'
+              }`}>
+                <div className={`absolute top-0 left-0 w-1 h-full ${
+                  isPrep ? 'bg-amber-500' : isReady ? 'bg-emerald-500' : 'bg-rose-500'
+                }`}></div>
+                <div className="flex justify-between items-center mb-5">
+                  <h3 className="text-3xl font-black text-slate-900 italic">Mesa {order.tableId}</h3>
+                  <div className="flex flex-col items-end">
+                     <span className="text-[10px] font-black text-slate-400 bg-white/50 px-2 py-1 rounded-lg mb-1">{new Date(order.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                       isPrep ? 'bg-amber-200 text-amber-800' : isReady ? 'bg-emerald-200 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                     }`}>
+                       {isPrep ? 'Preparando' : isReady ? 'Pronto' : 'Aguardando'}
+                     </span>
+                  </div>
+                </div>
+                <div className="flex-1 space-y-3 mb-6">
+                  {order.items.map((item, idx) => (
+                    <div key={idx} className="p-3 bg-white/60 rounded-xl border border-black/5">
+                      <div className="flex gap-2 items-center">
+                        <span className="min-w-[24px] h-6 bg-slate-950 text-white rounded flex items-center justify-center font-black text-[10px]">{item.quantity}</span>
+                        <span className="font-bold text-xs text-slate-800 uppercase italic flex-1">{item.name}</span>
+                      </div>
+                      {item.notes && (
+                        <div className="mt-2 bg-rose-600 text-white p-2 rounded-lg text-[10px] font-black uppercase italic animate-pulse">
+                          *** {item.notes} ***
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-auto">
+                  <button onClick={() => handlePrint(order)} className="bg-white border border-slate-200 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-colors">Imprimir</button>
+                  
+                  {!isReady ? (
+                    <button onClick={() => advanceStatus(order)} className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg text-white transition-colors ${
+                      isPrep ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
+                    }`}>
+                      {isPrep ? 'Marcar Pronto' : 'Preparar'}
+                    </button>
+                  ) : (
+                    <button onClick={() => store.closeOrder(order.id)} className="bg-slate-800 text-white py-3 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-colors">
+                      <i className="fas fa-check mr-1"></i> Receber
+                    </button>
+                  )}
+
+                  <button onClick={() => handleDelete(order)} className="col-span-2 text-red-400 py-2 font-black text-[8px] uppercase tracking-widest hover:text-red-600 transition-colors flex items-center justify-center gap-1 opacity-60 hover:opacity-100">
+                    <i className="fas fa-trash-can"></i> Cancelar Pedido
+                  </button>
                 </div>
               </div>
-              <div className="flex-1 space-y-3 mb-6">
-                {order.items.map((item, idx) => (
-                  <div key={idx} className="p-3 bg-white/60 rounded-xl border border-black/5">
-                    <div className="flex gap-2 items-center">
-                      <span className="min-w-[24px] h-6 bg-slate-950 text-white rounded flex items-center justify-center font-black text-[10px]">{item.quantity}</span>
-                      <span className="font-bold text-xs text-slate-800 uppercase italic flex-1">{item.name}</span>
-                    </div>
-                    {item.notes && (
-                      <div className="mt-2 bg-rose-600 text-white p-2 rounded-lg text-[10px] font-black uppercase italic animate-pulse">
-                        *** {item.notes} ***
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-auto">
-                <button onClick={() => handlePrint(order)} className="bg-white border border-slate-200 py-3 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-50 transition-colors">Imprimir</button>
-                
-                {!isReady ? (
-                  <button onClick={() => advanceStatus(order)} className={`py-3 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg text-white transition-colors ${
-                    isPrep ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100' : 'bg-amber-500 hover:bg-amber-600 shadow-amber-100'
-                  }`}>
-                    {isPrep ? 'Marcar Pronto' : 'Preparar'}
-                  </button>
-                ) : (
-                  <button onClick={() => store.closeOrder(order.id)} className="bg-slate-800 text-white py-3 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-colors">
-                    <i className="fas fa-check mr-1"></i> Receber
-                  </button>
-                )}
-
-                <button onClick={() => handleDelete(order)} className="col-span-2 text-red-400 py-2 font-black text-[8px] uppercase tracking-widest hover:text-red-600 transition-colors flex items-center justify-center gap-1 opacity-60 hover:opacity-100">
-                  <i className="fas fa-trash-can"></i> Cancelar Pedido
-                </button>
-              </div>
+            );
+          })}
+          {activeOrders.length === 0 && (
+            <div className="col-span-full py-24 text-center">
+               <i className="fas fa-check-circle text-emerald-100 text-6xl mb-4"></i>
+               <p className="text-xs font-black uppercase text-slate-300">Tudo pronto por aqui!</p>
             </div>
-          );
-        })}
-        {activeOrders.length === 0 && (
-          <div className="col-span-full py-24 text-center">
-             <i className="fas fa-check-circle text-emerald-100 text-6xl mb-4"></i>
-             <p className="text-xs font-black uppercase text-slate-300">Tudo pronto por aqui!</p>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
       <div className="hidden"><ThermalReceipt order={printingOrder} /></div>
     </div>
   );
@@ -597,8 +792,9 @@ const DashboardView = ({ store }: { store: Store }) => {
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+  const [aiAdvice, setAiAdvice] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
   
-  // Filtra as ordens PAGAS
   const filteredOrders = useMemo(() => {
     const paid = store.orders.filter((o) => o.status === 'PAID');
     const todayStr = formatDateLocal(new Date());
@@ -624,30 +820,61 @@ const DashboardView = ({ store }: { store: Store }) => {
     });
   }, [store.orders, filterType, dateStart, dateEnd]);
 
-  // Calcula o total monetário
   const total = useMemo(() => filteredOrders.reduce((acc, o) => acc + o.total, 0), [filteredOrders]);
 
-  // Lógica para os "Mais Vendidos" baseada nas ordens filtradas
   const topProducts = useMemo(() => {
     const productCounts: Record<string, number> = {};
     filteredOrders.forEach(order => {
       order.items.forEach(item => {
-        // Soma a quantidade de cada item
         const qty = item.quantity;
         productCounts[item.name] = (productCounts[item.name] || 0) + qty;
       });
     });
-
-    // Converte para array, ordena e pega os top 5
     return Object.entries(productCounts)
       .sort(([, qtyA], [, qtyB]) => qtyB - qtyA)
       .slice(0, 5);
   }, [filteredOrders]);
 
-  // Função para imprimir
+  // IDEA 1: Dados para Gráficos
+  const chartData = useMemo(() => {
+    const byCategory: Record<string, number> = {};
+    const byDay: Record<string, number> = {};
+
+    filteredOrders.forEach(o => {
+       const day = new Date(o.createdAt).toLocaleDateString('pt-BR', { weekday: 'short' });
+       byDay[day] = (byDay[day] || 0) + o.total;
+
+       o.items.forEach(i => {
+         // Tenta achar categoria pelo produto atual na store
+         const prod = store.products.find(p => p.id === i.productId);
+         const catName = prod ? CATEGORIES.find(c => c.id === prod.category)?.name : 'Outros';
+         const name = catName || 'Outros';
+         byCategory[name] = (byCategory[name] || 0) + (i.price * i.quantity);
+       });
+    });
+
+    return {
+      bar: Object.entries(byDay).map(([name, value]) => ({ name, value })),
+      pie: Object.entries(byCategory).map(([name, value]) => ({ name, value }))
+    };
+  }, [filteredOrders, store.products]);
+
+  // IDEA 2: AI Integration
+  const handleAskAi = async () => {
+    setAiLoading(true);
+    const dataSummary = {
+      totalSales: total,
+      count: filteredOrders.length,
+      topProducts: topProducts.map(p => ({ name: p[0], qty: p[1] })),
+      salesByDay: chartData.bar
+    };
+    const advice = await getBusinessInsights(dataSummary);
+    setAiAdvice(advice);
+    setAiLoading(false);
+  };
+
   const handlePrint = (order: Order) => {
     setPrintingOrder(order);
-    // Pequeno delay para o React renderizar o cupom antes de abrir a janela de print
     setTimeout(() => window.print(), 200);
   };
 
@@ -680,7 +907,6 @@ const DashboardView = ({ store }: { store: Store }) => {
           )}
         </div>
         
-        {/* Card Total */}
         <div className="bg-slate-950 p-6 rounded-[2rem] text-white w-full md:w-64 shadow-2xl border border-white/5 relative overflow-hidden">
           <div className="absolute -top-6 -right-6 w-20 h-20 bg-rose-600/10 rounded-full"></div>
           <p className="text-slate-500 text-[10px] font-black uppercase mb-1 tracking-widest">Total Líquido</p>
@@ -688,8 +914,59 @@ const DashboardView = ({ store }: { store: Store }) => {
         </div>
       </header>
 
+      {/* IDEA 2: AI Consultant Section */}
+      <div className="mb-6">
+         {!aiAdvice ? (
+           <button onClick={handleAskAi} disabled={aiLoading} className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-4 rounded-2xl shadow-lg flex items-center justify-center gap-3 active:scale-95 transition-all">
+             {aiLoading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-robot"></i>}
+             <span className="font-black text-xs uppercase tracking-widest">
+               {aiLoading ? 'Analisando dados...' : 'Consultar Inteligência Artificial'}
+             </span>
+           </button>
+         ) : (
+           <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-3xl relative animate-fadeIn">
+             <button onClick={() => setAiAdvice('')} className="absolute top-4 right-4 text-indigo-300 hover:text-indigo-600"><i className="fas fa-times"></i></button>
+             <div className="flex items-start gap-4">
+               <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center shrink-0"><i className="fas fa-lightbulb"></i></div>
+               <div>
+                 <h4 className="font-black text-indigo-900 uppercase text-sm mb-2">Insights da IA</h4>
+                 <div className="prose prose-sm prose-indigo text-indigo-800 text-xs leading-relaxed whitespace-pre-wrap">{aiAdvice}</div>
+               </div>
+             </div>
+           </div>
+         )}
+      </div>
+
+      {/* IDEA 1: Charts Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm h-80">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Vendas por Dia</h3>
+          <ResponsiveContainer width="100%" height="85%">
+            <BarChart data={chartData.bar}>
+              <XAxis dataKey="name" tick={{fontSize: 10}} axisLine={false} tickLine={false} />
+              <YAxis tick={{fontSize: 10}} axisLine={false} tickLine={false} tickFormatter={(v) => `R$${v}`} />
+              <RechartsTooltip cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
+              <Bar dataKey="value" fill="#e11d48" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm h-80">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Por Categoria</h3>
+          <ResponsiveContainer width="100%" height="85%">
+            <PieChart>
+              <Pie data={chartData.pie} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                {chartData.pie.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <RechartsTooltip contentStyle={{borderRadius: '12px', border: 'none'}} />
+              <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{fontSize: '10px'}} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Painel de Mais Vendidos (Novo) */}
         <div className="lg:col-span-1 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm h-fit">
           <h3 className="text-sm font-black text-slate-900 italic uppercase tracking-widest mb-4 flex items-center gap-2">
             <i className="fas fa-ranking-star text-amber-500"></i> Mais Vendidos
@@ -712,7 +989,6 @@ const DashboardView = ({ store }: { store: Store }) => {
           </div>
         </div>
 
-        {/* Lista de Vendas (Modificada com botão de Print) */}
         <div className="lg:col-span-2 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-sm font-black text-slate-900 italic uppercase tracking-widest">Histórico de Vendas</h3>
@@ -724,7 +1000,6 @@ const DashboardView = ({ store }: { store: Store }) => {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-black uppercase italic">Mesa {o.tableId}</p>
-                    {/* Botão para ver/reimprimir */}
                     <button 
                       onClick={() => handlePrint(o)}
                       className="bg-white border border-slate-200 text-slate-600 w-6 h-6 rounded flex items-center justify-center hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors"
@@ -745,8 +1020,6 @@ const DashboardView = ({ store }: { store: Store }) => {
           </div>
         </div>
       </div>
-
-      {/* Componente Oculto para Impressão */}
       <div className="hidden"><ThermalReceipt order={printingOrder} /></div>
     </div>
   );
@@ -754,6 +1027,41 @@ const DashboardView = ({ store }: { store: Store }) => {
 
 const App: React.FC = () => {
   const store = useStore();
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // IDEA 4: Security Logic
+  const handleNavigation = (path: string) => {
+    if (path === '/' || path.startsWith('/table/')) {
+      navigate(path);
+    } else {
+      // Rotas protegidas: Admin e Dashboard
+      if (isAdminUnlocked) {
+        navigate(path);
+      } else {
+        setShowPinModal(true);
+        // Salva o destino para navegar após sucesso
+        (window as any).pendingPath = path; 
+      }
+    }
+  };
+
+  const handlePinSuccess = () => {
+    setIsAdminUnlocked(true);
+    setShowPinModal(false);
+    const path = (window as any).pendingPath;
+    if (path) navigate(path);
+  };
+
+  // Redirecionar se tentar acessar direto pela URL sem auth
+  useEffect(() => {
+    if ((location.pathname === '/admin' || location.pathname === '/dashboard') && !isAdminUnlocked) {
+      navigate('/');
+      setTimeout(() => alert("Acesso Restrito: Use o menu para entrar com senha."), 100);
+    }
+  }, [location, isAdminUnlocked, navigate]);
   
   if (store.loading) return (
     <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-950">
@@ -766,22 +1074,27 @@ const App: React.FC = () => {
   );
 
   return (
-    <HashRouter>
-      <div className="flex flex-col md:flex-row min-h-screen bg-slate-50">
-        <Sidebar />
-        <ConnectionStatus />
-        <ToastContainer toasts={store.toasts} />
-        <main className="flex-1 overflow-x-hidden">
-          <Routes>
-            <Route path="/" element={<WaiterView store={store} />} />
-            <Route path="/table/:id" element={<OrderEditor store={store} />} />
-            <Route path="/admin" element={<AdminView store={store} />} />
-            <Route path="/dashboard" element={<DashboardView store={store} />} />
-          </Routes>
-        </main>
-      </div>
-    </HashRouter>
+    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50">
+      <Sidebar onNavigate={handleNavigation} />
+      <ConnectionStatus />
+      <ToastContainer toasts={store.toasts} />
+      {showPinModal && <PinModal onSuccess={handlePinSuccess} onClose={() => setShowPinModal(false)} />}
+      <main className="flex-1 overflow-x-hidden">
+        <Routes>
+          <Route path="/" element={<WaiterView store={store} />} />
+          <Route path="/table/:id" element={<OrderEditor store={store} />} />
+          <Route path="/admin" element={isAdminUnlocked ? <AdminView store={store} /> : <div/>} />
+          <Route path="/dashboard" element={isAdminUnlocked ? <DashboardView store={store} /> : <div/>} />
+        </Routes>
+      </main>
+    </div>
   );
 };
 
-export default App;
+export default function Root() {
+  return (
+    <HashRouter>
+      <App />
+    </HashRouter>
+  );
+}
